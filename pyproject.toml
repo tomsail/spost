@@ -1,0 +1,24 @@
+[project]
+name = "spost"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Panos Mavrogiorgos",email = "pmav99@gmail.com"}
+]
+requires-python = ">=3.13"
+dependencies = [
+    "xarray",
+    "natsort",
+    "numpy",
+    "multifutures[full]",
+    "zarr",
+    "cyclopts"
+]
+
+
+[project.scripts]
+spost = "spost._cli:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
