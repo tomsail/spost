@@ -12,13 +12,23 @@ dependencies = [
     "numpy",
     "multifutures[full]",
     "zarr",
-    "cyclopts"
+    "cyclopts",
+    "dask",
+    "shapely",
+    "numpy-indexed"
 ]
 
 
 [project.scripts]
 spost = "spost._cli:main"
 
+[project.optional-dependencies]
+image = ["pillow", "colorcet", "datashader"]
+complete = ["pillow", "colorcet", "datashader"]
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "*"

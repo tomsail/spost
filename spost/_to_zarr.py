@@ -10,6 +10,9 @@ import xarray as xr
 import zarr
 import zarr.codecs
 
+from ._utils import open_schism_output
+from ._utils import sanitize_attrs
+
 
 STATIC_VARIABLES = [
     "SCHISM_hgrid_edge_nodes",
@@ -62,7 +65,7 @@ VARIABLE_SPECS: dict[str, VariableSpec] = {
 
 
 def get_compressor(clevel: int = 3) -> zarr.codecs.BloscCodec:
-    return zarr.codecs.BloscCodec(cname="zstd", clevel=clevel, shuffle='bitshuffle', blocksize=0)
+    return zarr.codecs.BloscCodec(cname="zstd", clevel=clevel, shuffle="bitshuffle", blocksize=0)
 
 
 def open_schism_output(base_path: pathlib.Path, pattern: str) -> xr.Dataset:
@@ -71,7 +74,7 @@ def open_schism_output(base_path: pathlib.Path, pattern: str) -> xr.Dataset:
         raise FileNotFoundError(f"No files matching '{pattern}' found in {base_path}")
     ds = xr.open_mfdataset(
         files,
-        data_vars='minimal',
+        data_vars="minimal",
         coords="minimal",
         chunks={},
         compat="override",
@@ -80,31 +83,42 @@ def open_schism_output(base_path: pathlib.Path, pattern: str) -> xr.Dataset:
     return ds
 
 
-def sanitize_attrs(attrs):
-    sanitized = {}
-    for k, v in attrs.items():
-        if isinstance(v, np.generic):
-            sanitized[k] = v.item()
-        elif isinstance(v, np.ndarray):
-            sanitized[k] = v.tolist()
-        else:
-            sanitized[k] = v
-    return sanitized
-
-
 def initialize_store(base_path: pathlib.Path, store_path: pathlib.Path, overwrite: bool = False):
     group = zarr.create_group(store=store_path, overwrite=overwrite, zarr_format=3)
     ds = open_schism_output(base_path, "out2d_*.nc")
     for var in STATIC_VARIABLES:
         da = ds[var]
-        group.create_array(name=var, data=da.values, dimension_names=da.dims, attributes=sanitize_attrs(da.attrs), chunks=da.shape, overwrite=True, fill_value=None)
+        group.create_array(
+            name=var,
+            data=da.values,
+            dimension_names=da.dims,
+            attributes=sanitize_attrs(da.attrs),
+            chunks=da.shape,
+            overwrite=True,
+            fill_value=None,
+        )
     # SCHISM_hgrid datatype is bytes which is not supported by zarr, so we need to change it via `.astype()`
     var = "SCHISM_hgrid"
     da = ds[var]
-    group.create_array(name=var, data=da.values.astype(np.bool_), dimension_names=da.dims, attributes=sanitize_attrs(da.attrs), chunks=da.shape, overwrite=True, fill_value=None)
+    group.create_array(
+        name=var,
+        data=da.values.astype(np.bool_),
+        dimension_names=da.dims,
+        attributes=sanitize_attrs(da.attrs),
+        chunks=da.shape,
+        overwrite=True,
+        fill_value=None,
+    )
 
 
-def create_2D_array(base_path: pathlib.Path, store_path: pathlib.Path, nc_variable: str, pattern: str, zarr_variable: str, clevel: int = 3):
+def create_2D_array(
+    base_path: pathlib.Path,
+    store_path: pathlib.Path,
+    nc_variable: str,
+    pattern: str,
+    zarr_variable: str,
+    clevel: int = 3,
+):
     group = zarr.open_group(store=store_path)
     ds = open_schism_output(base_path, pattern)
     da = ds[nc_variable]
@@ -124,13 +138,26 @@ def create_2D_array(base_path: pathlib.Path, store_path: pathlib.Path, nc_variab
     )
 
 
-def process_timestamp(store_path: pathlib.Path, zarr_variable: str, da: xr.DataArray, ts: np.datetime64, index: int):
+def process_timestamp(
+    store_path: pathlib.Path,
+    zarr_variable: str,
+    da: xr.DataArray,
+    ts: np.datetime64,
+    index: int,
+):
     group = zarr.open_group(store_path)
     array = group[zarr_variable]
     array[index, :] = da.sel(time=ts).values
 
 
-def populate_array(base_path: pathlib.Path, store_path: pathlib.Path, nc_variable: str, zarr_variable: str, pattern: str, workers: int = 12):
+def populate_array(
+    base_path: pathlib.Path,
+    store_path: pathlib.Path,
+    nc_variable: str,
+    zarr_variable: str,
+    pattern: str,
+    workers: int = 12,
+):
     ds = open_schism_output(base_path, pattern)
     da = ds[nc_variable]
     # If 3D variable, select top layer
