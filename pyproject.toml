@@ -26,6 +26,20 @@ spost = "spost._cli:main"
 image = ["pillow", "colorcet", "datashader"]
 complete = ["pillow", "colorcet", "datashader", "netcdf4", "dask"]
 schism = ["netcdf4", "dask"]
+validate = [
+    "searvey",
+    "ioc_cleanup",
+    "seastats",
+    "pytides2",
+    "joblib",
+    "matplotlib",
+    "jinja2",
+    "pyarrow",
+    "pandas",
+    "netcdf4",
+]
+validate-interactive = ["plotly", "folium"]
+validate-pdf = ["weasyprint"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

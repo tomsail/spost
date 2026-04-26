@@ -1,0 +1,5 @@
+<div class="station-fragment">
+  <h3>{{ code }}</h3>
+  {% if timeseries %}<img class="plot" src="data:image/png;base64,{{ timeseries }}" alt="Timeseries for {{ code }}">{% endif %}
+  {% if scatter %}<img class="plot" src="data:image/png;base64,{{ scatter }}" alt="Scatter for {{ code }}">{% endif %}
+</div>

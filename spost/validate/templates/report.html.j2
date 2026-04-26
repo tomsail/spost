@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>spost validation report — {{ name or run or "unnamed" }}</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem; color: #222; }
+  header { border-bottom: 1px solid #ddd; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+  h1 { margin: 0 0 0.25rem; font-size: 1.5rem; }
+  .meta { color: #666; font-size: 0.9rem; }
+  table { border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+  th, td { border: 1px solid #ddd; padding: 0.4rem 0.7rem; text-align: right; }
+  th { background: #f4f4f4; text-align: left; }
+  td:first-child, th:first-child { text-align: left; font-family: monospace; }
+  .station-section { margin: 2.5rem 0; padding-bottom: 1rem; border-bottom: 1px dashed #ddd; }
+  .station-section h2 { font-size: 1.1rem; }
+  .plot { max-width: 100%; height: auto; }
+  .summary-block { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+  .delta-pos { color: #b00020; }
+  .delta-neg { color: #006837; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SCHISM validation — {{ name or run or "spost" }}</h1>
+  <div class="meta">
+    Window: <strong>{{ start }}</strong> → <strong>{{ end }}</strong>
+    · Generated: {{ generated_at }}
+    · spost {{ spost_version }}
+  </div>
+</header>
+
+{% if include_map and map_html %}
+<section>
+  <h2>Station map</h2>
+  {{ map_html | safe }}
+</section>
+{% endif %}
+
+{% if include_summary and metrics_table %}
+<section>
+  <h2>Summary metrics</h2>
+  {{ metrics_table | safe }}
+</section>
+{% endif %}
+
+{% if include_taylor and taylor_plot %}
+<section>
+  <h2>Taylor diagram</h2>
+  <img class="plot" src="data:image/png;base64,{{ taylor_plot }}" alt="Taylor diagram">
+</section>
+{% endif %}
+
+{% if include_tidal_maps and tidal_maps %}
+<section>
+  <h2>Tidal constituents (full mesh)</h2>
+  {% for plot in tidal_maps %}
+    <h3>{{ plot.constituent }}</h3>
+    <img class="plot" src="data:image/png;base64,{{ plot.image }}" alt="Tidal map for {{ plot.constituent }}">
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if reference_table %}
+<section>
+  <h2>Regression vs reference</h2>
+  {{ reference_table | safe }}
+</section>
+{% endif %}
+
+<section>
+  <h2>Per-station detail</h2>
+  {% for station in stations %}
+  <div class="station-section">
+    <h2>{{ station.code }}</h2>
+    <div class="summary-block">
+      {% if include_timeseries and station.timeseries %}
+        <div>
+          <h3>Timeseries</h3>
+          <img class="plot" src="data:image/png;base64,{{ station.timeseries }}" alt="Timeseries for {{ station.code }}">
+        </div>
+      {% endif %}
+      {% if include_scatter and station.scatter %}
+        <div>
+          <h3>Scatter</h3>
+          <img class="plot" src="data:image/png;base64,{{ station.scatter }}" alt="Scatter for {{ station.code }}">
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+</body>
+</html>

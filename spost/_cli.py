@@ -7,6 +7,13 @@ from cyclopts.types import ExistingPath
 
 from spost._constants import parse_bbox
 from spost._literals import RegionName
+from spost.validate._cli import (
+    compare_app,
+    fetch_obs_app,
+    report_app,
+    tidal_app,
+    validate_app,
+)
 
 app = cyclopts.App(name="spost", help="Post processing tools for SCHISM output")
 extract_app = cyclopts.App(name="extract", help="Convert/Extract SCHISM files to readable outputs")
@@ -15,6 +22,13 @@ skill_app = cyclopts.App(name="skill", help="Compute skill metrics")
 app.command(extract_app)
 app.command(plot_app)
 app.command(skill_app)
+app.command(validate_app)
+app.command(fetch_obs_app)
+app.command(compare_app)
+app.command(report_app)
+app.command(tidal_app)
+
+_CONFIG_AWARE_APPS = (app, validate_app, fetch_obs_app, compare_app, report_app, tidal_app)
 
 
 @extract_app.command
@@ -283,5 +297,49 @@ def tides_grid():
     raise NotImplementedError("skill is not yet implemented")
 
 
+@app.meta.default
+def _meta(
+    *tokens: Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
+    config: pathlib.Path | None = None,
+    verbose: bool = False,
+):
+    """Top-level entry point.
+
+    ``--config PATH`` attaches a TOML defaults file (see hydrogen-style
+    ``cyclopts.config.Toml``); when omitted, parents of the cwd are searched
+    for a ``pyproject.toml`` with a ``[spost.<command>]`` section.
+    """
+    import logging
+
+    logging.basicConfig(level=logging.INFO if verbose else logging.WARNING, format="%(message)s")
+
+    config_path = config
+    if config_path is None:
+        # Auto-discover pyproject.toml in cwd ancestors.
+        cwd = pathlib.Path.cwd()
+        for parent in [cwd, *cwd.parents]:
+            candidate = parent / "pyproject.toml"
+            if candidate.exists():
+                config_path = candidate
+                break
+
+    if config_path is not None and config_path.exists():
+        try:
+            config_handler = cyclopts.config.Toml(
+                config_path,
+                root_keys=["spost"],
+                use_commands_as_keys=True,
+                allow_unknown=True,
+                search_parents=False,
+            )
+            for sub in _CONFIG_AWARE_APPS:
+                sub.config = config_handler
+        except Exception:
+            # A malformed or partial config should never break the CLI.
+            pass
+
+    app(tokens)
+
+
 def main():
-    app()
+    app.meta()
