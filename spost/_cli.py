@@ -18,17 +18,20 @@ from spost.validate._cli import (
 app = cyclopts.App(name="spost", help="Post processing tools for SCHISM output")
 extract_app = cyclopts.App(name="extract", help="Convert/Extract SCHISM files to readable outputs")
 plot_app = cyclopts.App(name="plot", help="Produce graphs from SCHISM outputs")
-skill_app = cyclopts.App(name="skill", help="Compute skill metrics")
+skill_app = cyclopts.App(
+    name="skill",
+    help="Validation pipeline: fetch obs, compare, tidal harmonics, report.",
+)
 app.command(extract_app)
 app.command(plot_app)
 app.command(skill_app)
-app.command(validate_app)
-app.command(fetch_obs_app)
-app.command(compare_app)
-app.command(report_app)
-app.command(tidal_app)
+skill_app.command(validate_app)
+skill_app.command(fetch_obs_app)
+skill_app.command(compare_app)
+skill_app.command(report_app)
+skill_app.command(tidal_app)
 
-_CONFIG_AWARE_APPS = (app, validate_app, fetch_obs_app, compare_app, report_app, tidal_app)
+_CONFIG_AWARE_APPS = (app, skill_app, validate_app, fetch_obs_app, compare_app, report_app, tidal_app)
 
 
 @extract_app.command
@@ -283,18 +286,6 @@ def stations(
         output_path=output_path,
         staout_indices=staout_indices,
     )
-
-
-@skill_app.command
-def tide_stations():
-    """Not implemented yet."""
-    raise NotImplementedError("skill is not yet implemented")
-
-
-@skill_app.command
-def tides_grid():
-    """Not implemented yet."""
-    raise NotImplementedError("skill is not yet implemented")
 
 
 @app.meta.default

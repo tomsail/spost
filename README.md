@@ -15,17 +15,16 @@ There are three main subcommands:
  2. Plot: Produce graphs from SCHISM outputs
  3. Skill: Compute skill by comparing against in-situ data or other datasets
 
-In addition, the validation pipeline (`pip install spost[validate]`) adds
-five top-level subcommands that orchestrate the full
-model-vs-observations workflow:
+The `skill` group hosts the full validation pipeline
+(`pip install spost[validate]`):
 
 | Command | Purpose |
 | --- | --- |
-| `spost fetch-obs` | Download IOC observations and apply `ioc_cleanup` transformations. |
-| `spost compare` | Align model and obs and compute `seastats` skill metrics. |
-| `spost tidal-analysis` | Full-mesh tidal harmonic decomposition (`pytides2` + `joblib`). |
-| `spost report` | Render an HTML/PDF validation report. |
-| `spost validate` | Run `fetch-obs` → `compare` → `report` end-to-end. |
+| `spost skill fetch-obs` | Download IOC observations and apply `ioc_cleanup` transformations. |
+| `spost skill compare` | Align model and obs and compute `seastats` skill metrics. |
+| `spost skill tidal` | Full-mesh tidal harmonic decomposition (`pytides2` + `joblib`). |
+| `spost skill report` | Render an HTML/PDF validation report. |
+| `spost skill validate` | Run `fetch-obs` → `compare` → `report` end-to-end. |
 
 ## Usage
 
@@ -160,21 +159,10 @@ Generates PNGs first, then stitches them with ffmpeg.
 
 ### Skill
 
-Compute skill scores comparing model output to observations. (Not yet implemented)
-
-```bash
-spost skill --help
-```
-
-Available subcommands:
-- `tide-stations`: Not implemented yet.
-- `tides-grid`: Not implemented yet.
-
-### Validate
-
-The validation pipeline lives under `spost.validate` (Python API) and as
-top-level CLI commands. It depends on `searvey`, `ioc_cleanup`, `seastats`,
-`pytides2`, `joblib`, `matplotlib` and `jinja2`:
+The `skill` group houses the validation pipeline. Python API lives at
+`spost.validate`; the CLI is exposed as `spost skill <stage>`. Heavy
+dependencies (`searvey`, `ioc_cleanup`, `seastats`, `pytides2`, `joblib`,
+`matplotlib`, `jinja2`) are gated behind the `validate` extra:
 
 ```bash
 pip install spost[validate]
@@ -187,19 +175,19 @@ Common workflow:
 spost extract stations 100/20200101.00/outputs --output-path 100/stations
 
 # 2. Run the full pipeline (fetch-obs → compare → report) for run 100.
-spost validate --run 100 --start 2020-01-01 --end 2020-12-31
+spost skill validate --run 100 --start 2020-01-01 --end 2020-12-31
 
 # Individual stages:
-spost fetch-obs --run 100 --start 2020-01-01 --end 2020-12-31
-spost compare   --run 100 --start 2020-01-01 --end 2020-12-31 --spinup-days 5
-spost report    --run 100 --format html
+spost skill fetch-obs --run 100 --start 2020-01-01 --end 2020-12-31
+spost skill compare   --run 100 --start 2020-01-01 --end 2020-12-31 --spinup-days 5
+spost skill report    --run 100 --format html
 
 # Heavy full-mesh tidal decomposition (kept separate from `validate`).
-spost tidal-analysis --run 100 --start 2020-01-01 --end 2021-01-01 \
+spost skill tidal --run 100 --start 2020-01-01 --end 2021-01-01 \
   --chunk-size 200 --n-jobs 32
 
 # Pull tidal maps into the report.
-spost report --run 100 --tides-nc 100_tides.nc
+spost skill report --run 100 --tides-nc 100_tides.nc
 ```
 
 Default path resolution (overridable via CLI or TOML):
@@ -212,20 +200,21 @@ Default path resolution (overridable via CLI or TOML):
 | `--meta-parquet` | `ioc_cleanup.get_meta()` |
 | `--transformations-dir` | `ioc_cleanup.get_transformations_dir()` |
 
-Defaults can also live in `pyproject.toml` (auto-discovered, hydrogen-style):
+Defaults can also live in `pyproject.toml` (auto-discovered, hydrogen-style).
+Tables follow the command path:
 
 ```toml
-[spost.validate]
+[spost.skill.validate]
 output_dir = "./validation/"
 report_format = "html"
 spinup_days = 5
 
-[spost.tidal-analysis]
+[spost.skill.tidal]
 chunk_size = 100
 n_jobs = -1
 resample_minutes = 60
 
-[spost.report]
+[spost.skill.report]
 format = "html"
 include_timeseries = true
 include_scatter = true
@@ -240,9 +229,9 @@ A different config file can be supplied with `--config /path/to/file.toml`
 
 #### Incremental runs
 
-`spost validate` writes a `state.json` to the validation output directory
-and uses it to skip already-fetched data on subsequent runs. Pass
-`--force` to ignore prior state and reprocess everything. The IOC raw
+`spost skill validate` writes a `state.json` to the validation output
+directory and uses it to skip already-fetched data on subsequent runs.
+Pass `--force` to ignore prior state and reprocess everything. The IOC raw
 data cache lives at `~/.cache/spost/ioc/` (override via `SPOST_CACHE_DIR`
 or `XDG_CACHE_HOME`).
 

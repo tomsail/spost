@@ -32,7 +32,7 @@ report_app = cyclopts.App(
     help="Render the HTML/PDF validation report.",
 )
 tidal_app = cyclopts.App(
-    name="tidal-analysis",
+    name="tidal",
     help="Full-mesh tidal harmonic decomposition (pytides2 + joblib).",
 )
 
