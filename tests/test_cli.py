@@ -139,12 +139,15 @@ def test_plot_to_pngs_parses(tmp_path: pathlib.Path):
             "640",
             "--height",
             "360",
+            "--workers",
+            "1",
         ]
     )
     assert cmd.__name__ == "to_pngs"
     assert bound.arguments["variable"] == "elevation"
     assert bound.arguments["width"] == 640
     assert bound.arguments["height"] == 360
+    assert bound.arguments["workers"] == 1
 
 
 # ---------------------------------------------------------------------------

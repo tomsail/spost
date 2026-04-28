@@ -42,9 +42,10 @@ def render_pngs(
     cmap: list | None = None,
     overwrite: bool = True,
     font_size: int = 20,
+    workers: int = 4,
 ) -> list[pathlib.Path]:
     """
-    Render each timestep of a variable to a PNG using datashader trimesh. Leverages multifutures to exports frames in parallel.
+    Render each timestep of a variable to a PNG using datashader trimesh.
 
     Parameters
     ----------
@@ -63,6 +64,11 @@ def render_pngs(
         If True, overwrites PNGs that already exist.
     font_size
         Font size for the timestamp overlay.
+    workers
+        Parallel worker count. ``workers <= 1`` runs sequentially in-process
+        (no subprocesses), which is easier to debug on resource-constrained
+        machines such as HPC login nodes where loky workers can be killed by
+        cgroup memory limits and produce a silent failure.
 
     Returns
     -------
@@ -123,7 +129,23 @@ def render_pngs(
             # save
             pil_img.save(png_file)
 
-    mf.multiprocess(render_timestep, dict_list)
+    if not dict_list:
+        return
+
+    if workers <= 1:
+        for kw in tqdm.auto.tqdm(dict_list, desc="rendering"):
+            render_timestep(**kw)
+        return
+
+    # ``check=True`` is critical: without it loky surfaces worker deaths
+    # (e.g. cgroup OOM kill on HPC login nodes) only as a UserWarning, and
+    # the command appears to "fail silently" — no PNGs and no error.
+    mf.multiprocess(
+        func=render_timestep,
+        func_kwargs=dict_list,
+        max_workers=workers,
+        check=True,
+    )
 
 
 def pngs_to_mp4(
@@ -172,6 +194,7 @@ def _to_pngs(
     cmap: str | None = None,
     overwrite: bool = False,
     clip: tuple = None,
+    workers: int = 4,
 ) -> list[pathlib.Path]:
     ds = open_zarr_store(input_path)
     if clip is not None:
@@ -191,6 +214,7 @@ def _to_pngs(
         height=height,
         cmap=cmap_list,
         overwrite=overwrite,
+        workers=workers,
     )
 
 
@@ -206,6 +230,7 @@ def _to_mp4(
     overwrite: bool = False,
     png_dir: pathlib.Path | None = None,
     clip: tuple = None,
+    workers: int = 4,
 ) -> pathlib.Path:
     if png_dir is None:
         png_dir = output_path.parent / f".pngs_{variable}"
@@ -218,5 +243,6 @@ def _to_mp4(
         cmap=cmap,
         overwrite=overwrite,
         clip=clip,
+        workers=workers,
     )
     return pngs_to_mp4(png_dir, output_path, framerate=framerate)

@@ -146,6 +146,7 @@ def to_pngs(
     cmap: str = "coolwarm",
     overwrite: bool = True,
     clip: Annotated[RegionName, cyclopts.Parameter(converter=parse_bbox)] = None,
+    workers: int = 4,
 ):
     """Render a variable from a zarr store to PNG frames.
 
@@ -157,8 +158,6 @@ def to_pngs(
         Variable name to render (as stored in zarr).
     output_path
         Directory for output PNGs. Defaults to ./{variable}_pngs/.
-    variable
-        Variable name to render.
     width
         Image width in pixels.
     height
@@ -170,6 +169,11 @@ def to_pngs(
     clip
         Clip the rendering to bbox as (`lon_min`, `lat_min`, `lon_max`, `lat_max`) or a region string.
         Attention! If `lon_min` starts negative you need to use a = sign, eg: --clip`=`"-4 0 10 30"
+    workers
+        Parallel worker count. Use ``--workers 1`` to run sequentially in
+        the parent process — recommended on HPC login nodes where loky
+        workers may be killed by cgroup memory limits and the failure
+        otherwise surfaces only as a UserWarning.
     """
     if input_path is None or variable is None:
         plot_app["to-pngs"].help_print()
@@ -188,6 +192,7 @@ def to_pngs(
         cmap=cmap,
         overwrite=overwrite,
         clip=clip,
+        workers=workers,
     )
 
 
@@ -204,6 +209,7 @@ def to_mp4(
     png_dir: pathlib.Path | None = None,
     overwrite: bool = False,
     clip: Annotated[RegionName, cyclopts.Parameter(converter=parse_bbox)] = None,
+    workers: int = 4,
 ):
     """Render a variable from a zarr store to an MP4 video.
 
@@ -252,6 +258,7 @@ def to_mp4(
         overwrite=overwrite,
         png_dir=png_dir,
         clip=clip,
+        workers=workers,
     )
 
 
