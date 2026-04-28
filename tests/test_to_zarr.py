@@ -140,6 +140,63 @@ def test_incremental_extraction_matches_full_span(
     )
 
 
+def test_exclude_last_drops_trailing_segment_file(pimesh0_root, tmp_path):
+    """``exclude_last=N`` drops the last N files of each natsorted pattern.
+
+    Mirrors the real failure mode: SCHISM is still writing the latest
+    out2d_*.nc, opening it raises an HDF error. Using ``exclude_last=1``
+    must yield a strictly shorter timeline than the no-trim run.
+    """
+    full_store = tmp_path / "full.zarr"
+    trimmed_store = tmp_path / "trimmed.zarr"
+
+    to_zarr(
+        base_path=pimesh0_root,
+        store_path=full_store,
+        variables=_VARIABLES,
+        workers=_WORKERS,
+        clevel=1,
+        overwrite=True,
+    )
+    to_zarr(
+        base_path=pimesh0_root,
+        store_path=trimmed_store,
+        variables=_VARIABLES,
+        workers=_WORKERS,
+        clevel=1,
+        overwrite=True,
+        exclude_last=1,
+    )
+
+    full = _open_zarr(full_store)
+    trimmed = _open_zarr(trimmed_store)
+
+    assert trimmed["time"].size > 0
+    assert trimmed["time"].size < full["time"].size, (
+        f"trimmed timeline ({trimmed['time'].size}) should be strictly shorter "
+        f"than full ({full['time'].size}) once the trailing file is dropped"
+    )
+    # Whatever remains must be a proper prefix of the full timeline.
+    np.testing.assert_array_equal(
+        trimmed["time"].values,
+        full["time"].values[: trimmed["time"].size],
+    )
+
+
+def test_exclude_last_too_large_raises(pimesh0_root, tmp_path):
+    """Trimming everything must error out instead of silently producing nothing."""
+    with pytest.raises(ValueError, match="exclude_last"):
+        to_zarr(
+            base_path=pimesh0_root,
+            store_path=tmp_path / "empty.zarr",
+            variables=_VARIABLES,
+            workers=_WORKERS,
+            clevel=1,
+            overwrite=True,
+            exclude_last=10_000,
+        )
+
+
 def test_overwrite_required_when_store_exists(
     pimesh0_root, tmp_path, staged_run
 ):

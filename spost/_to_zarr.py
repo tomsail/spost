@@ -68,10 +68,21 @@ def get_compressor(clevel: int = 3) -> zarr.codecs.BloscCodec:
     return zarr.codecs.BloscCodec(cname="zstd", clevel=clevel, shuffle="bitshuffle", blocksize=0)
 
 
-def open_schism_output(base_path: pathlib.Path, pattern: str) -> xr.Dataset:
+def open_schism_output(
+    base_path: pathlib.Path,
+    pattern: str,
+    exclude_last: int = 0,
+) -> xr.Dataset:
     files = natsort.natsorted(base_path.glob(f"**/{pattern}"))
     if not files:
         raise FileNotFoundError(f"No files matching '{pattern}' found in {base_path}")
+    if exclude_last:
+        if exclude_last >= len(files):
+            raise ValueError(
+                f"exclude_last={exclude_last} would drop all {len(files)} files "
+                f"matching {pattern!r}"
+            )
+        files = files[:-exclude_last]
     ds = xr.open_mfdataset(
         files,
         data_vars="minimal",
@@ -83,9 +94,14 @@ def open_schism_output(base_path: pathlib.Path, pattern: str) -> xr.Dataset:
     return ds
 
 
-def initialize_store(base_path: pathlib.Path, store_path: pathlib.Path, overwrite: bool = False):
+def initialize_store(
+    base_path: pathlib.Path,
+    store_path: pathlib.Path,
+    overwrite: bool = False,
+    exclude_last: int = 0,
+):
     group = zarr.create_group(store=store_path, overwrite=overwrite, zarr_format=3)
-    ds = open_schism_output(base_path, "out2d_*.nc")
+    ds = open_schism_output(base_path, "out2d_*.nc", exclude_last=exclude_last)
     for var in STATIC_VARIABLES:
         da = ds[var]
         group.create_array(
@@ -118,9 +134,10 @@ def create_2D_array(
     pattern: str,
     zarr_variable: str,
     clevel: int = 3,
+    exclude_last: int = 0,
 ):
     group = zarr.open_group(store=store_path)
-    ds = open_schism_output(base_path, pattern)
+    ds = open_schism_output(base_path, pattern, exclude_last=exclude_last)
     da = ds[nc_variable]
     # If 3D variable, convert to 2D by selecting the top layer
     if "nSCHISM_vgrid_layers" in da.dims:
@@ -157,8 +174,9 @@ def populate_array(
     zarr_variable: str,
     pattern: str,
     workers: int = 12,
+    exclude_last: int = 0,
 ):
-    ds = open_schism_output(base_path, pattern)
+    ds = open_schism_output(base_path, pattern, exclude_last=exclude_last)
     da = ds[nc_variable]
     # If 3D variable, select top layer
     if "nSCHISM_vgrid_layers" in da.dims:
@@ -179,14 +197,15 @@ def to_zarr(
     workers: int = 12,
     clevel: int = 3,
     overwrite: bool = False,
+    exclude_last: int = 0,
 ):
-    initialize_store(base_path, store_path, overwrite=overwrite)
+    initialize_store(base_path, store_path, overwrite=overwrite, exclude_last=exclude_last)
     if variables == ["all"]:
         variables = list(VARIABLE_SPECS.keys())
     for var in variables:
         spec = VARIABLE_SPECS[var]
-        create_2D_array(base_path, store_path, clevel=clevel, **spec)
+        create_2D_array(base_path, store_path, clevel=clevel, exclude_last=exclude_last, **spec)
     zarr.consolidate_metadata(store_path)
     for var in variables:
         spec = VARIABLE_SPECS[var]
-        populate_array(base_path, store_path, workers=workers, **spec)
+        populate_array(base_path, store_path, workers=workers, exclude_last=exclude_last, **spec)

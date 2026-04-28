@@ -43,6 +43,7 @@ def to_zarr(
     workers: int = 12,
     clevel: int = 3,
     overwrite: bool = False,
+    exclude_last: int = 0,
 ):
     """Convert SCHISM output to Zarr format.
 
@@ -67,6 +68,10 @@ def to_zarr(
         Compression level (1-9).
     overwrite
         Overwrite existing store.
+    exclude_last
+        Drop the last N files of each pattern (out2d_*.nc, salinity_*.nc, ...)
+        from the natsorted glob. Useful when the most recent SCHISM segment is
+        still being written and the trailing file is truncated/corrupted.
     """
     if input_path is None:
         extract_app["to-zarr"].help_print()
@@ -89,6 +94,7 @@ def to_zarr(
         workers=workers,
         clevel=clevel,
         overwrite=overwrite,
+        exclude_last=exclude_last,
     )
 
 

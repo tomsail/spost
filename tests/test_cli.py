@@ -60,6 +60,8 @@ def test_extract_to_zarr_parses(tmp_path: pathlib.Path):
             "--clevel",
             "5",
             "--overwrite",
+            "--exclude-last",
+            "1",
         ]
     )
 
@@ -71,6 +73,7 @@ def test_extract_to_zarr_parses(tmp_path: pathlib.Path):
     assert kw["workers"] == 2
     assert kw["clevel"] == 5
     assert kw["overwrite"] is True
+    assert kw["exclude_last"] == 1
 
 
 def test_extract_clip_parses_named_region(tmp_path: pathlib.Path):
