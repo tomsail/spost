@@ -17,7 +17,7 @@ import cyclopts
 
 validate_app = cyclopts.App(
     name="validate",
-    help="Run the full validation pipeline (fetch-obs → compare → report).",
+    help="Run the full validation pipeline (fetch-obs -> compare -> report).",
 )
 fetch_obs_app = cyclopts.App(
     name="fetch-obs",

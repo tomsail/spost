@@ -5,7 +5,7 @@ description = ""
 authors = [
     {name = "Panos Mavrogiorgos",email = "pmav99@gmail.com"}
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.13,<4.0"
 dependencies = [
     "xarray",
     "natsort",
@@ -24,22 +24,36 @@ spost = "spost._cli:main"
 
 [project.optional-dependencies]
 image = ["pillow", "colorcet", "datashader"]
-complete = ["pillow", "colorcet", "datashader", "netcdf4", "dask"]
-schism = ["netcdf4", "dask"]
-validate = [
+complete = [
+    "pillow",
+    "colorcet",
+    "datashader",
+    "netcdf4",
+    "dask",
     "searvey",
-    "ioc_cleanup",
     "seastats",
-    "pytides2",
     "joblib",
     "matplotlib",
     "jinja2",
     "pyarrow",
     "pandas",
     "netcdf4",
+    "pytides2 @ git+https://github.com/tomsail/pytides.git",
+    "ioc-cleanup @ git+https://github.com/tomsail/ioc_cleanup.git"
 ]
-validate-interactive = ["plotly", "folium"]
-validate-pdf = ["weasyprint"]
+schism = ["netcdf4", "dask"]
+validate = [
+    "searvey",
+    "seastats",
+    "joblib",
+    "matplotlib",
+    "jinja2",
+    "pyarrow",
+    "pandas",
+    "netcdf4",
+    "pytides2 @ git+https://github.com/tomsail/pytides.git",
+    "ioc-cleanup @ git+https://github.com/tomsail/ioc_cleanup.git",
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

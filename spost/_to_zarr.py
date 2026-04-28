@@ -68,32 +68,6 @@ def get_compressor(clevel: int = 3) -> zarr.codecs.BloscCodec:
     return zarr.codecs.BloscCodec(cname="zstd", clevel=clevel, shuffle="bitshuffle", blocksize=0)
 
 
-def open_schism_output(
-    base_path: pathlib.Path,
-    pattern: str,
-    exclude_last: int = 0,
-) -> xr.Dataset:
-    files = natsort.natsorted(base_path.glob(f"**/{pattern}"))
-    if not files:
-        raise FileNotFoundError(f"No files matching '{pattern}' found in {base_path}")
-    if exclude_last:
-        if exclude_last >= len(files):
-            raise ValueError(
-                f"exclude_last={exclude_last} would drop all {len(files)} files "
-                f"matching {pattern!r}"
-            )
-        files = files[:-exclude_last]
-    ds = xr.open_mfdataset(
-        files,
-        data_vars="minimal",
-        coords="minimal",
-        chunks={},
-        compat="override",
-        mask_and_scale=False,
-    )
-    return ds
-
-
 def initialize_store(
     base_path: pathlib.Path,
     store_path: pathlib.Path,

@@ -6,10 +6,21 @@ import pandas as pd
 import xarray as xr
 
 
-def open_schism_output(base_path: pathlib.Path, pattern: str) -> xr.Dataset:
+def open_schism_output(
+    base_path: pathlib.Path,
+    pattern: str,
+    exclude_last: int = 0,
+) -> xr.Dataset:
     files = natsort.natsorted(base_path.glob(f"**/{pattern}"))
     if not files:
         raise FileNotFoundError(f"No files matching '{pattern}' found in {base_path}")
+    if exclude_last:
+        if exclude_last >= len(files):
+            raise ValueError(
+                f"exclude_last={exclude_last} would drop all {len(files)} files "
+                f"matching {pattern!r}"
+            )
+        files = files[:-exclude_last]
     ds = xr.open_mfdataset(
         files,
         data_vars="minimal",
