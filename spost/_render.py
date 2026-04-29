@@ -7,6 +7,7 @@ import pathlib
 import shlex
 import subprocess
 
+import functools
 import colorcet
 import datashader
 import datashader.transfer_functions as tf
@@ -42,7 +43,7 @@ def render_pngs(
     cmap: list | None = None,
     overwrite: bool = True,
     font_size: int = 20,
-    workers: int = 4,
+    workers: int = 12,
 ) -> list[pathlib.Path]:
     """
     Render each timestep of a variable to a PNG using datashader trimesh.
@@ -80,36 +81,31 @@ def render_pngs(
     coords_df = ds[["SCHISM_hgrid_node_x", "SCHISM_hgrid_node_y"]].to_dataframe().reset_index(drop=True)
     simplices_df = build_simplices(ds)
     canvas = datashader.Canvas(plot_width=width, plot_height=height)
+    da = ds[variable]
 
     dict_list = []
-    for i, ts in enumerate(ds.time.values):
+    for i, ts in enumerate(da.time.values):
         png_file = output_path / f"{i:06d}.png"
         if overwrite or not png_file.exists():
             dict_list.append(
                 {
-                    "canvas": canvas,
                     "simplices_df": simplices_df,
-                    "ds": ds,
                     "variable": variable,
                     "ts": ts,
-                    "output_path": output_path,
-                    "overwrite": overwrite,
-                    "cmap": cmap,
                 }
             )
 
     def render_timestep(
         canvas: datashader.Canvas,
         simplices_df: pd.DataFrame,
-        ds: xr.Dataset,
+        da: xr.Dataset,
         variable: str,
         ts: np.datetime64,
         output_path: pathlib.Path,
         overwrite: bool,
         cmap: list,
     ) -> None:
-        da = ds[variable]
-        i = np.where(ds.time.values == ts)[0][0]
+        i = np.where(da.time.values == ts)[0][0]
         png_file = output_path / f"{i:06d}.png"
 
         if overwrite or not png_file.exists():
@@ -137,11 +133,15 @@ def render_pngs(
             render_timestep(**kw)
         return
 
-    # ``check=True`` is critical: without it loky surfaces worker deaths
-    # (e.g. cgroup OOM kill on HPC login nodes) only as a UserWarning, and
-    # the command appears to "fail silently" — no PNGs and no error.
     mf.multiprocess(
-        func=render_timestep,
+        func=functools.partial(
+            render_timestep,
+            canvas=canvas,
+            output_path=output_path,
+            da=da,
+            overwrite=overwrite,
+            cmap=cmap
+        ),
         func_kwargs=dict_list,
         max_workers=workers,
         check=True,
