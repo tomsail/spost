@@ -1,3 +1,4 @@
-from spost._cli import main
+from . import app
 
-main()
+def main():
+    app.meta()

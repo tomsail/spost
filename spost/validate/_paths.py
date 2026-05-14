@@ -6,7 +6,6 @@ Resolution order for any path argument is:
 2. TOML config value (handled by ``cyclopts.config.Toml``).
 3. Programmatic default (this module).
 """
-
 from __future__ import annotations
 
 import pathlib
@@ -28,36 +27,17 @@ def run_zarr(run: str | None, zarr_path: pathlib.Path | None = None) -> pathlib.
     return pathlib.Path(f"./{run}.zarr")
 
 
-def run_validation_dir(run: str | None, output_dir: pathlib.Path | None = None) -> pathlib.Path:
-    """Resolve the validation output directory (``./{run}.validation/``)."""
-    if output_dir is not None:
-        return output_dir
-    if run is None:
-        return pathlib.Path("./validation")
-    return pathlib.Path(f"./{run}.validation")
-
-
-def run_station_data(
-    run: str | None,
+def get_station_data(
     station_data_path: pathlib.Path | None = None,
-    variable: str = "elev",
 ) -> pathlib.Path:
     """Resolve the spost station-data directory.
-
-    Defaults to ``./{run}/stations/{variable}`` (the layout produced by
-    ``spost extract stations``). Falls back to ``./stations/{variable}`` when no
-    run is given.
     """
-    if station_data_path is not None:
-        return station_data_path
-    if run is None:
-        return pathlib.Path(f"./stations/{variable}")
-    candidate = pathlib.Path(f"./{run}/stations/{variable}")
-    if candidate.exists():
-        return candidate
-    # Fall back to the bare ./stations/{variable} layout
-    return pathlib.Path(f"./stations/{variable}")
+    import ioc_cleanup as C
+    ioc = C.get_meta()
+    stats = C.calc_statistics(ioc, stations_dir=C.TRANSFORMATIONS_DIR, pattern="*.json")
+    print(stats)
 
+    return station_data_path
 
 def default_meta_parquet(meta_parquet: pathlib.Path | None = None) -> pathlib.Path | None:
     """Return the user-supplied path or the bundled ``ioc_cleanup`` meta."""

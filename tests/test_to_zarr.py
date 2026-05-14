@@ -4,14 +4,13 @@ Skips automatically when ``tests/data/pimesh0/`` is not present.
 
 Two scenarios are exercised:
 
-- **Full span** — pointing ``to_zarr`` at the run root (which contains both
+- **Full span** - pointing ``to_zarr`` at the run root (which contains both
   hotstart segments) produces a single zarr covering the full timeline.
-- **Incremental** — extracting after only the first segment is on disk, then
+- **Incremental** - extracting after only the first segment is on disk, then
   re-running once the second segment has been added, must yield the same
   contents as the full-span run. This mimics the way SCHISM produces output:
   one segment at a time, with post-processing extending the zarr each pass.
 """
-
 from __future__ import annotations
 
 import pathlib
@@ -89,7 +88,7 @@ def test_incremental_extraction_matches_full_span(
     """
     store_path = tmp_path / "incremental.zarr"
 
-    # Step 1 — only the first segment is on disk.
+    # Step 1 - only the first segment is on disk.
     run_dir = staged_run("20200101.00")
     to_zarr(
         base_path=run_dir,
@@ -104,7 +103,7 @@ def test_incremental_extraction_matches_full_span(
     first.close()
     assert n_first > 0
 
-    # Step 2 — second segment becomes available (simulated by copying it in).
+    # Step 2 - second segment becomes available (simulated by copying it in).
     run_dir = staged_run("20200131.00")
     to_zarr(
         base_path=run_dir,

@@ -4,7 +4,6 @@ Follows the cyclopts unit-testing pattern: ``app.parse_args(tokens)`` returns
 ``(callable, BoundArguments, ignored)`` so we can assert on the resolved
 function and its bound arguments without actually executing the command body.
 """
-
 from __future__ import annotations
 
 import datetime
@@ -177,7 +176,6 @@ def test_skill_validate_parses_window_and_run():
     assert bound.arguments["end"] == datetime.datetime(2020, 12, 31)
     assert bound.arguments["spinup_days"] == 5
     # Defaults flow through.
-    assert bound.arguments["resample"] == "1h"
     assert bound.arguments["report_format"] == "html"
     assert bound.arguments["force"] is False
 

@@ -7,34 +7,8 @@ from cyclopts.types import ExistingPath
 
 from spost._constants import parse_bbox
 from spost._literals import RegionName
-from spost.validate._cli import (
-    compare_app,
-    fetch_obs_app,
-    report_app,
-    tidal_app,
-    validate_app,
-)
-
-app = cyclopts.App(name="spost", help="Post processing tools for SCHISM output")
-extract_app = cyclopts.App(name="extract", help="Convert/Extract SCHISM files to readable outputs")
-plot_app = cyclopts.App(name="plot", help="Produce graphs from SCHISM outputs")
-skill_app = cyclopts.App(
-    name="skill",
-    help="Validation pipeline: fetch obs, compare, tidal harmonics, report.",
-)
-app.command(extract_app)
-app.command(plot_app)
-app.command(skill_app)
-skill_app.command(validate_app)
-skill_app.command(fetch_obs_app)
-skill_app.command(compare_app)
-skill_app.command(report_app)
-skill_app.command(tidal_app)
-
-_CONFIG_AWARE_APPS = (app, skill_app, validate_app, fetch_obs_app, compare_app, report_app, tidal_app)
 
 
-@extract_app.command
 def to_zarr(
     *,
     input_path: ExistingDirectory | None = None,
@@ -45,7 +19,8 @@ def to_zarr(
     overwrite: bool = False,
     exclude_last: int = 0,
 ):
-    """Convert SCHISM output to Zarr format.
+    """
+    Convert SCHISM output to Zarr format.
 
     Supported variables:
      * elevation
@@ -73,10 +48,6 @@ def to_zarr(
         from the natsorted glob. Useful when the most recent SCHISM segment is
         still being written and the trailing file is truncated/corrupted.
     """
-    if input_path is None:
-        extract_app["to-zarr"].help_print()
-        raise SystemExit(0)
-
     from spost._to_zarr import to_zarr as _to_zarr
     from spost._to_zarr import VARIABLE_SPECS
 
@@ -98,7 +69,6 @@ def to_zarr(
     )
 
 
-@extract_app.command
 def clip(
     *,
     input_path: pathlib.Path | None = None,
@@ -121,10 +91,6 @@ def clip(
         Bounding box as (`lon_min`, `lat_min`, `lon_max`, `lat_max`) or a region string.
         Attention! If `lon_min` starts negative you need to use a = sign, eg: --bbox`=`"-4 0 10 30"
     """
-    if input_path is None:
-        extract_app["clip"].help_print()
-        raise SystemExit(0)
-
     from spost._clip import clip_zarr
 
     clip_zarr(
@@ -135,16 +101,16 @@ def clip(
     )
 
 
-@plot_app.command
 def to_pngs(
     *,
-    input_path: ExistingPath | None = None,
-    variable: str | None = None,
+    input_path: ExistingPath,
+    variable: str,
     output_path: pathlib.Path | None = None,
     width: int = 1920,
     height: int = 1080,
     cmap: str = "coolwarm",
     overwrite: bool = True,
+    show_mesh: bool = False,
     clip: Annotated[RegionName, cyclopts.Parameter(converter=parse_bbox)] = None,
     workers: int = 4,
 ):
@@ -163,21 +129,21 @@ def to_pngs(
     height
         Image height in pixels.
     cmap
-        Colorcet colormap name (e.g. 'coolwarm', 'fire', 'rainbow')
+        Colorcet colormap name (e.g. 'coolwarm', 'fire', 'rainbow').
+        Append '_r' to reverse the colormap (e.g. 'fire_r', 'coolwarm_r').
     overwrite
         Re-render PNGs even if they already exist.
     clip
         Clip the rendering to bbox as (`lon_min`, `lat_min`, `lon_max`, `lat_max`) or a region string.
         Attention! If `lon_min` starts negative you need to use a = sign, eg: --clip`=`"-4 0 10 30"
+    show_mesh
+        If True, overlays the mesh edges on top of the variable rendering.
     workers
         Parallel worker count. Use ``--workers 1`` to run sequentially in
-        the parent process — recommended on HPC login nodes where loky
+        the parent process - recommended on HPC login nodes where loky
         workers may be killed by cgroup memory limits and the failure
         otherwise surfaces only as a UserWarning.
     """
-    if input_path is None or variable is None:
-        plot_app["to-pngs"].help_print()
-        raise SystemExit(0)
     if output_path is None:
         output_path = pathlib.Path(f"./{variable}_pngs")
 
@@ -192,11 +158,11 @@ def to_pngs(
         cmap=cmap,
         overwrite=overwrite,
         clip=clip,
+        show_mesh=show_mesh,
         workers=workers,
     )
 
 
-@plot_app.command
 def to_mp4(
     *,
     input_path: ExistingPath | None = None,
@@ -239,9 +205,6 @@ def to_mp4(
         Clip the rendering to bbox as (`lon_min`, `lat_min`, `lon_max`, `lat_max`) or a region string.
         Attention! If `lon_min` starts negative you need to use a = sign, eg: --clip`=`"-4 0 10 30"
     """
-    if input_path is None or variable is None:
-        plot_app["to-mp4"].help_print()
-        raise SystemExit(0)
     if output_path is None:
         output_path = pathlib.Path(f"./{variable}.mp4")
 
@@ -262,7 +225,6 @@ def to_mp4(
     )
 
 
-@extract_app.command
 def stations(
     *outputs_dirs: pathlib.Path,
     output_path: pathlib.Path = pathlib.Path("./stations"),
@@ -283,9 +245,6 @@ def stations(
     staout_indices
         Which staout indices to process (1-9). Defaults to auto-detect.
     """
-    if len(outputs_dirs) == 0:
-        extract_app["stations"].help_print()
-        raise SystemExit(0)
     for d in outputs_dirs:
         if not d.is_dir():
             raise FileNotFoundError(f"Directory not found: {d}")
@@ -299,51 +258,3 @@ def stations(
         output_path=output_path,
         staout_indices=staout_indices,
     )
-
-
-@app.meta.default
-def _meta(
-    *tokens: Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
-    config: pathlib.Path | None = None,
-    verbose: bool = False,
-):
-    """Top-level entry point.
-
-    ``--config PATH`` attaches a TOML defaults file (see hydrogen-style
-    ``cyclopts.config.Toml``); when omitted, parents of the cwd are searched
-    for a ``pyproject.toml`` with a ``[spost.<command>]`` section.
-    """
-    import logging
-
-    logging.basicConfig(level=logging.INFO if verbose else logging.WARNING, format="%(message)s")
-
-    config_path = config
-    if config_path is None:
-        # Auto-discover pyproject.toml in cwd ancestors.
-        cwd = pathlib.Path.cwd()
-        for parent in [cwd, *cwd.parents]:
-            candidate = parent / "pyproject.toml"
-            if candidate.exists():
-                config_path = candidate
-                break
-
-    if config_path is not None and config_path.exists():
-        try:
-            config_handler = cyclopts.config.Toml(
-                config_path,
-                root_keys=["spost"],
-                use_commands_as_keys=True,
-                allow_unknown=True,
-                search_parents=False,
-            )
-            for sub in _CONFIG_AWARE_APPS:
-                sub.config = config_handler
-        except Exception:
-            # A malformed or partial config should never break the CLI.
-            pass
-
-    app(tokens)
-
-
-def main():
-    app.meta()

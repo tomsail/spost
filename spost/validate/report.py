@@ -4,7 +4,6 @@ Reads ``metrics.parquet`` plus the per-station comparison netCDFs (and
 optionally the full-mesh tidal output) and renders a self-contained HTML or
 PDF report via Jinja2.
 """
-
 from __future__ import annotations
 
 import base64
@@ -57,7 +56,7 @@ def _plot_timeseries(code: str, comparison_path: pathlib.Path) -> str | None:
     fig, ax = plt.subplots(figsize=(9, 3))
     ds["model"].plot(ax=ax, label="model", lw=1.0)
     ds["obs"].plot(ax=ax, label="obs", lw=1.0, alpha=0.8)
-    ax.set_title(f"{code} — timeseries")
+    ax.set_title(f"{code} - timeseries")
     ax.set_xlabel("")
     ax.set_ylabel("")
     ax.legend(loc="upper right", frameon=False)
@@ -88,7 +87,7 @@ def _plot_scatter(code: str, comparison_path: pathlib.Path) -> str | None:
         ax.plot([lo, hi], [lo, hi], "k--", lw=0.8)
     ax.set_xlabel("obs")
     ax.set_ylabel("model")
-    ax.set_title(f"{code} — scatter")
+    ax.set_title(f"{code} - scatter")
     ax.set_aspect("equal", adjustable="box")
     fig.tight_layout()
     return _fig_to_b64(fig)

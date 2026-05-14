@@ -20,7 +20,7 @@ dependencies = [
 
 
 [project.scripts]
-spost = "spost._cli:main"
+spost = "spost.__main__:main"
 
 [project.optional-dependencies]
 image = ["pillow", "colorcet", "datashader"]

@@ -1,11 +1,11 @@
-import numpy as np
-import xarray as xr
+import logging
 import pathlib
+
+import numpy as np
 import shapely
+import xarray as xr
 
 from spost._constants import REGIONS
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def clip_ds(ds: xr.Dataset, bbox: shapely.Polygon) -> xr.Dataset:
     y = ds["SCHISM_hgrid_node_y"].values
     tri = ds["SCHISM_hgrid_face_nodes"].values[:, :3].astype(int) - 1  # convert to 0-based
     nodes_mask, tri_mask, new_tri = crop(x, y, tri, bbox)
-    if len(nodes_mask) == 0:
+    if len(nodes_mask) == 0 or len(new_tri) == 0:
         raise ValueError("No nodes found inside the bounding box.")
 
     n_orig = len(x)

@@ -9,10 +9,8 @@ Per station we:
 
 Outputs:
 
-- ``{output_dir}/metrics.parquet`` — one row per station, columns are metrics.
-- ``{output_dir}/per_station/{code}_comparison.nc`` — aligned model vs obs.
+- ``{output_dir}/metrics.parquet`` - one row per station, columns are metrics.
 """
-
 from __future__ import annotations
 
 import datetime
@@ -20,7 +18,7 @@ import logging
 import pathlib
 from collections.abc import Sequence
 
-from . import _paths, _state
+from . import _paths
 
 logger = logging.getLogger(__name__)
 
@@ -72,14 +70,16 @@ def _load_obs_series(path: pathlib.Path, variable: str):
     return da.to_pandas().rename(variable)
 
 
-def _align(model_s, obs_s, freq: str):
+def _align(model_s, obs_s):
     import pandas as pd
-
-    if freq:
-        model_s = model_s.resample(freq).mean()
-        obs_s = obs_s.resample(freq).mean()
-    df = pd.concat({"model": model_s, "obs": obs_s}, axis=1).dropna()
-    return df
+    obs = pd.Series(obs_s, name="obs")
+    sim = pd.Series(model_s, name="model")
+    df = pd.merge(sim, obs, left_index=True, right_index=True, how="outer")
+    df["model"] = df["model"].interpolate(method="linear", limit_direction="both")
+    df = df.dropna(subset=["obs"])
+    sim_ = df["sim"].drop_duplicates()
+    obs_ = df["obs"].drop_duplicates()
+    return sim_, obs_
 
 
 def _seastats_metrics(model_s, obs_s) -> dict:
@@ -149,7 +149,6 @@ def compare(
     obs_dir: pathlib.Path | None = None,
     output_dir: pathlib.Path | None = None,
     spinup_days: int = 0,
-    resample: str = "1h",
     variables: Sequence[str] = ("elev",),
 ) -> pathlib.Path:
     """Compute skill metrics for every station with both model and obs data.
@@ -177,7 +176,7 @@ def compare(
         code = obs_file.stem
         model_file = _model_file_for_code(station_dir, code)
         if model_file is None:
-            logger.info("No model file for %s — skipping", code)
+            logger.info("No model file for %s - skipping", code)
             continue
         try:
             model_s = _load_model_series(model_file, primary_var)
@@ -188,28 +187,19 @@ def compare(
 
         model_s = model_s.loc[start_dt:end_dt]
         obs_s = obs_s.loc[start_dt:end_dt]
-        aligned = _align(model_s, obs_s, resample)
-        if aligned.empty:
-            logger.info("Empty overlap for %s — skipping", code)
+        model_, obs_ = _align(model_s, obs_s)
+        if model_.empty or obs_.empty:
+            logger.info("Empty overlap for %s - skipping", code)
             continue
 
-        metrics = _seastats_metrics(aligned["model"], aligned["obs"])
+        metrics = _seastats_metrics(model_, obs_)
         metrics_row = {"station": code, **metrics}
         rows.append(metrics_row)
 
-        # Save per-station aligned dataset for use by the report.
-        comparison = aligned.to_xarray()
-        comparison.attrs["station"] = code
-        comparison.to_netcdf(per_station / f"{code}_comparison.nc")
 
     metrics_df = pd.DataFrame(rows).set_index("station") if rows else pd.DataFrame()
     metrics_path = out_dir / _METRICS_FILE
     metrics_df.to_parquet(metrics_path)
-
-    state = _state.load(out_dir)
-    state.start = start_dt.isoformat()
-    state.end = end_dt.isoformat()
-    _state.save(out_dir, state)
 
     logger.info("compare: wrote metrics for %d stations to %s", len(rows), metrics_path)
     return metrics_path

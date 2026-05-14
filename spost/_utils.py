@@ -47,8 +47,20 @@ def sanitize_attrs(attrs: dict) -> dict:
 def build_simplices(ds: xr.Dataset) -> pd.DataFrame:
     """Extract triangle simplices from SCHISM mesh for datashader rendering."""
     faces = ds["SCHISM_hgrid_face_nodes"].values.astype("int64") - 1
-    tris = faces[:, :3]
-    return pd.DataFrame(tris, columns=["v0", "v1", "v2"])
+    return pd.DataFrame(faces[:, :3] , columns=["v0", "v1", "v2"])
+
+
+def build_edge_df(coords_df: pd.DataFrame, simplices_df: pd.DataFrame, x: str = "SCHISM_hgrid_node_x", y: str = "SCHISM_hgrid_node_y") -> pd.DataFrame:
+    """Build NaN-separated edge segments from mesh triangles for datashader line rendering."""
+    xs, ys = coords_df[x].values, coords_df[y].values
+    v = simplices_df[["v0", "v1", "v2"]].values  # (N, 3)
+    nan = np.full(len(v), np.nan)
+
+    edges = [(v[:, i], v[:, j]) for i, j in ((0, 1), (1, 2), (2, 0))]
+    edge_x = np.stack([c for a, b in edges for c in (xs[a], xs[b], nan)], axis=1).ravel()
+    edge_y = np.stack([c for a, b in edges for c in (ys[a], ys[b], nan)], axis=1).ravel()
+
+    return pd.DataFrame({"x": edge_x, "y": edge_y})
 
 
 def open_zarr_store(store_path: pathlib.Path) -> xr.Dataset:

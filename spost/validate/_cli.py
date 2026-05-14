@@ -5,39 +5,32 @@ register them at the top level (matching the spec: ``spost validate``,
 ``spost fetch-obs``, ``spost compare``, ``spost report``,
 ``spost tidal-analysis``).
 """
-
 from __future__ import annotations
 
 import datetime
+import os
 import pathlib
+import platform
 from typing import Annotated
 
-import cyclopts
+import platformdirs
+from cyclopts import Parameter
+from cyclopts.types import ResolvedDirectory
 
+_HOSTNAME = platform.node()
 
-validate_app = cyclopts.App(
-    name="validate",
-    help="Run the full validation pipeline (fetch-obs -> compare -> report).",
-)
-fetch_obs_app = cyclopts.App(
-    name="fetch-obs",
-    help="Fetch IOC observations and apply ioc_cleanup transformations.",
-)
-compare_app = cyclopts.App(
-    name="compare",
-    help="Compute skill metrics by aligning model output to cleaned observations.",
-)
-report_app = cyclopts.App(
-    name="report",
-    help="Render the HTML/PDF validation report.",
-)
-tidal_app = cyclopts.App(
-    name="tidal",
-    help="Full-mesh tidal harmonic decomposition (pytides2 + joblib).",
-)
+if "meluxina" in _HOSTNAME:
+    _GROUP_ID = os.getgroups()[-1]
+    _PROJECT_DIR = pathlib.Path(f"/project/home/p{_GROUP_ID}")
+    _SCRATCH_DIR = pathlib.Path(f"/project/scratch/p{_GROUP_ID}")
+    _default_cache_dir = _SCRATCH_DIR / "cache"
+    _default_obs_dir = _PROJECT_DIR / "01_obs/ioc_cleanup/"
+else:
+    _default_cache_dir = platformdirs.user_cache_path()
+    _default_obs_dir = pathlib.Path(os.environ.get("IOC_CLEANUP_DIR", "ioc_cleanup"))
 
-
-_Subcommands = (validate_app, fetch_obs_app, compare_app, report_app, tidal_app)
+_DEFAULT_CACHE_DIR = _default_cache_dir
+_DEFAULT_OBS_DIR = _default_obs_dir
 
 
 def _split_csv(value: str | list[str] | None) -> list[str] | None:
@@ -47,38 +40,38 @@ def _split_csv(value: str | list[str] | None) -> list[str] | None:
         return [v.strip() for v in value if v]
     return [v.strip() for v in value.split(",") if v.strip()]
 
-
-@validate_app.default
-def validate(
+def fetch_obs(
     *,
+    start: datetime.datetime,
+    end: datetime.datetime,
+    station_data_path: ResolvedDirectory = _DEFAULT_OBS_DIR,
     run: str | None = None,
-    start: datetime.datetime | None = None,
-    end: datetime.datetime | None = None,
-    station_data_path: pathlib.Path | None = None,
     meta_parquet: pathlib.Path | None = None,
-    transformations_dir: pathlib.Path | None = None,
     output_dir: pathlib.Path | None = None,
-    variables: Annotated[list[str], cyclopts.Parameter(consume_multiple=True)] = ["elev"],
-    resample: str = "1h",
-    spinup_days: int = 0,
-    report_format: str = "html",
-    reference_metrics: pathlib.Path | None = None,
-    name: str | None = None,
     force: bool = False,
 ):
-    """Run the full validation pipeline.
-
-    Equivalent to running ``fetch-obs``, ``compare`` and ``report`` in
-    sequence. ``tidal-analysis`` is intentionally excluded — it's a heavier
-    standalone computation.
     """
-    if run is None or start is None or end is None:
-        validate_app.help_print()
-        raise SystemExit(0)
+    Fetch IOC observations and apply per-station transformations.
 
-    from spost.validate import compare as _compare
+    Parameters
+    ----------
+    start
+        Start of the validation window (inclusive). Required.
+    end
+        End of the validation window (inclusive). Required.
+    station_data_path
+        path to station parquet files. If not provided, will attempt to fetch from IOC.
+        Defaults to platform specific paths. Raw IOC data is cached in _DEFAULT_OBS_DIR/raw and clean in _DEFAULT_OBS_DIR/clean.
+    run
+        Optional name for this validation run, used to construct output paths.
+    meta_parquet
+        Optional path to meta parquet file. If not provided, will attempt to fetch from IOC.
+    force
+        If True, ignore any existing cached observations and re-fetch from IOC. Default False.
+    """
+
     from spost.validate import fetch_obs as _fetch_obs
-    from spost.validate import report as _report
+
 
     _fetch_obs(
         start=start,
@@ -86,68 +79,11 @@ def validate(
         run=run,
         station_data_path=station_data_path,
         meta_parquet=meta_parquet,
-        transformations_dir=transformations_dir,
-        output_dir=output_dir,
-        resample=resample,
-        force=force,
-    )
-    _compare(
-        start=start,
-        end=end,
-        run=run,
-        station_data_path=station_data_path,
-        output_dir=output_dir,
-        spinup_days=spinup_days,
-        resample=resample,
-        variables=tuple(variables),
-    )
-    _report(
-        run=run,
-        output_dir=output_dir,
-        station_data_path=station_data_path,
-        format=report_format,
-        reference_metrics=reference_metrics,
-        name=name,
-    )
-
-
-@fetch_obs_app.default
-def fetch_obs_cmd(
-    *,
-    run: str | None = None,
-    start: datetime.datetime | None = None,
-    end: datetime.datetime | None = None,
-    station_data_path: pathlib.Path | None = None,
-    meta_parquet: pathlib.Path | None = None,
-    transformations_dir: pathlib.Path | None = None,
-    output_dir: pathlib.Path | None = None,
-    resample: str = "1h",
-    no_cache: bool = False,
-    force: bool = False,
-):
-    """Fetch IOC observations and apply per-station transformations."""
-    if start is None or end is None:
-        fetch_obs_app.help_print()
-        raise SystemExit(0)
-
-    from spost.validate import fetch_obs as _fetch_obs
-
-    _fetch_obs(
-        start=start,
-        end=end,
-        run=run,
-        station_data_path=station_data_path,
-        meta_parquet=meta_parquet,
-        transformations_dir=transformations_dir,
-        output_dir=output_dir,
-        resample=resample,
-        no_cache=no_cache,
         force=force,
     )
 
 
-@compare_app.default
-def compare_cmd(
+def compare(
     *,
     run: str | None = None,
     start: datetime.datetime | None = None,
@@ -156,13 +92,9 @@ def compare_cmd(
     obs_dir: pathlib.Path | None = None,
     output_dir: pathlib.Path | None = None,
     spinup_days: int = 0,
-    resample: str = "1h",
-    variables: Annotated[list[str], cyclopts.Parameter(consume_multiple=True)] = ["elev"],
+    variables: Annotated[list[str], Parameter(consume_multiple=True)] = ["elev"],
 ):
     """Align model and obs and compute seastats skill metrics."""
-    if start is None or end is None:
-        compare_app.help_print()
-        raise SystemExit(0)
 
     from spost.validate import compare as _compare
 
@@ -174,28 +106,23 @@ def compare_cmd(
         obs_dir=obs_dir,
         output_dir=output_dir,
         spinup_days=spinup_days,
-        resample=resample,
         variables=tuple(variables),
     )
 
 
-@tidal_app.default
-def tidal_cmd(
+def tidal(
     *,
     run: str | None = None,
     start: datetime.datetime | None = None,
     end: datetime.datetime | None = None,
     zarr_path: pathlib.Path | None = None,
     output: pathlib.Path | None = None,
-    constituents: Annotated[list[str], cyclopts.Parameter(consume_multiple=True)] | None = None,
+    constituents: Annotated[list[str], Parameter(consume_multiple=True)] | None = None,
     chunk_size: int = 100,
     n_jobs: int = -1,
     resample_minutes: int = 60,
 ):
     """Decompose elevation across the full mesh into tidal constituents."""
-    if start is None or end is None or (run is None and zarr_path is None):
-        tidal_app.help_print()
-        raise SystemExit(0)
 
     from spost.validate import tidal_analysis as _tidal
     from spost.validate.tidal_analysis import FULL_CONSTITUENTS
@@ -213,8 +140,7 @@ def tidal_cmd(
     )
 
 
-@report_app.default
-def report_cmd(
+def report(
     *,
     run: str | None = None,
     output_dir: pathlib.Path | None = None,
@@ -251,4 +177,59 @@ def report_cmd(
         include_tidal_maps=include_tidal_maps,
         include_map=include_map,
         include_summary_table=include_summary,
+    )
+
+
+def validate(
+    *,
+    run: str | None = None,
+    start: datetime.datetime | None = None,
+    end: datetime.datetime | None = None,
+    station_data_path: pathlib.Path | None = None,
+    meta_parquet: pathlib.Path | None = None,
+    transformations_dir: pathlib.Path | None = None,
+    output_dir: pathlib.Path | None = None,
+    variables: Annotated[list[str], Parameter(consume_multiple=True)] = ["elev"],
+    spinup_days: int = 0,
+    report_format: str = "html",
+    reference_metrics: pathlib.Path | None = None,
+    name: str | None = None,
+    force: bool = False,
+):
+    """Run the full validation station pipeline (fetch-obs -> compare -> report).
+
+    Equivalent to running ``fetch-obs``, ``compare`` and ``report`` in
+    sequence. ``tidal-analysis`` is intentionally excluded - it's a heavier
+    standalone computation.
+    """
+
+    from spost.validate import compare as _compare
+    from spost.validate import fetch_obs as _fetch_obs
+    from spost.validate import report as _report
+
+    _fetch_obs(
+        start=start,
+        end=end,
+        run=run,
+        station_data_path=station_data_path,
+        meta_parquet=meta_parquet,
+        transformations_dir=transformations_dir,
+        force=force,
+    )
+    _compare(
+        start=start,
+        end=end,
+        run=run,
+        station_data_path=station_data_path,
+        output_dir=output_dir,
+        spinup_days=spinup_days,
+        variables=tuple(variables),
+    )
+    _report(
+        run=run,
+        output_dir=output_dir,
+        station_data_path=station_data_path,
+        format=report_format,
+        reference_metrics=reference_metrics,
+        name=name,
     )

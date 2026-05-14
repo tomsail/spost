@@ -3,6 +3,8 @@ import cyclopts
 REGIONS = {
     # (lon_min, lat_min, lon_max, lat_max)
     "chile": (-100.0, -56.0, -66.0, -17.0),
+    "caribbean": (-89.0, 8.0, -58.0, 28.0),
+    "west_indies": (-85.0, 10.0, -59.0, 24.0),
     "north_sea": (-5.0, 51.0, 9.0, 62.0),
     "channel": (-6.0, 48.0, 2.0, 52.0),
     "gascogne": (-10.0, 43.0, -1.0, 48.5),

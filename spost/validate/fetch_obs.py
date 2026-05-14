@@ -4,19 +4,18 @@ Wraps ``searvey`` (raw IOC fetching) and ``ioc_cleanup`` (per-station
 transformations) and writes one cleaned netCDF per station to
 ``{output_dir}/obs_ts/{station_code}.nc``.
 """
-
 from __future__ import annotations
 
 import datetime
 import logging
 import pathlib
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
+from collections.abc import Sequence
 
-from . import _paths, _state, cache
+from . import _paths
+from . import cache
 
 logger = logging.getLogger(__name__)
-
-_OBS_DIRNAME = "obs_ts"
 
 
 def _coerce_dt(value: datetime.datetime | str) -> datetime.datetime:
@@ -72,32 +71,18 @@ def _load_meta(meta_parquet: pathlib.Path | None):
     return pd.read_parquet(meta)
 
 
-def _transformations_dir(transformations_dir: pathlib.Path | None) -> pathlib.Path:
-    if transformations_dir is not None:
-        return transformations_dir
-    try:
-        import ioc_cleanup
-    except ImportError as exc:
-        raise ImportError(
-            "ioc_cleanup is required for fetch-obs. "
-            "Install with: pip install spost[validate]"
-        ) from exc
-    return pathlib.Path(ioc_cleanup.get_transformations_dir())
-
-
 def _fetch_one(
     code: str,
     start: datetime.datetime,
     end: datetime.datetime,
-    no_cache: bool,
 ):
     """Fetch raw IOC data for one station, using the local cache when possible."""
-    import xarray as xr
+    import pandas as pd
 
     cache_file = cache.cache_path(code, start, end)
-    if not no_cache and cache_file.exists():
+    if cache_file.exists():
         try:
-            return xr.open_dataset(cache_file)
+            return pd.read_parquet(cache_file)
         except Exception:
             cache_file.unlink(missing_ok=True)
 
@@ -111,12 +96,9 @@ def _fetch_one(
 
     df = searvey.fetch_ioc_station(code, start, end)
     if df is None or len(df) == 0:
-        return None
-    ds = df.to_xarray() if hasattr(df, "to_xarray") else xr.Dataset.from_dataframe(df)
-    if not no_cache:
-        ds.to_netcdf(cache_file)
-        cache.write_manifest(cache_file, code, start, end)
-    return ds
+        return pd.DataFrame()  # empty but valid
+
+    return df
 
 
 def _apply_transformation(ds, code: str, transformations_dir: pathlib.Path):
@@ -136,14 +118,6 @@ def _apply_transformation(ds, code: str, transformations_dir: pathlib.Path):
     )
 
 
-def _resample(ds, freq: str):
-    if freq is None:
-        return ds
-    if "time" not in ds.dims and "time" not in ds.coords:
-        return ds
-    return ds.resample(time=freq).mean()
-
-
 def fetch_obs(
     start: datetime.datetime | str,
     end: datetime.datetime | str,
@@ -152,31 +126,25 @@ def fetch_obs(
     station_data_path: pathlib.Path | None = None,
     meta_parquet: pathlib.Path | None = None,
     transformations_dir: pathlib.Path | None = None,
-    output_dir: pathlib.Path | None = None,
-    resample: str = "1h",
-    no_cache: bool = False,
     force: bool = False,
     stations: Sequence[str] | None = None,
 ) -> pathlib.Path:
     """Fetch and clean IOC observations for the given window.
 
-    Returns the output directory containing the per-station netCDFs.
+    Returns the output directory containing the per-station parquet files.
     """
     start_dt = _coerce_dt(start)
     end_dt = _coerce_dt(end)
 
-    out_dir = _paths.run_validation_dir(run, output_dir)
-    obs_dir = out_dir / _OBS_DIRNAME
-    obs_dir.mkdir(parents=True, exist_ok=True)
+    print(start_dt, end_dt)
 
-    state = _state.load(out_dir)
-    prev_end = _state.previous_window_end(state) if not force else None
+    print(station_data_path)
 
-    station_dir = _paths.run_station_data(run, station_data_path)
+    station_dir = _paths.get_station_data(station_data_path)
     model_codes = _model_station_codes(station_dir)
     if not model_codes:
         logger.warning(
-            "No model stations found under %s — observations will still be fetched "
+            "No model stations found under %s - observations will still be fetched "
             "but no intersection filtering can be applied.",
             station_dir,
         )
@@ -211,7 +179,7 @@ def fetch_obs(
             fetch_start = prev_end
 
         try:
-            ds = _fetch_one(code, fetch_start, end_dt, no_cache=no_cache)
+            ds = _fetch_one(code, fetch_start, end_dt)
         except Exception as exc:
             logger.warning("Failed to fetch %s: %s", code, exc)
             skipped.append(code)
@@ -222,11 +190,10 @@ def fetch_obs(
 
         ds_clean = _apply_transformation(ds, code, trans_dir)
         if ds_clean is None:
-            logger.info("No transformation for %s — skipping", code)
+            logger.info("No transformation for %s - skipping", code)
             skipped.append(code)
             continue
 
-        ds_clean = _resample(ds_clean, resample)
 
         if out_file.exists() and prev_end is not None and not force:
             try:
@@ -246,12 +213,6 @@ def fetch_obs(
         ds_clean.to_netcdf(tmp)
         tmp.replace(out_file)
         processed.append(code)
-
-    state.start = start_dt.isoformat()
-    state.end = end_dt.isoformat()
-    state.stations_processed = sorted(set(state.stations_processed) | set(processed))
-    state.stations_skipped = sorted(set(skipped))
-    _state.save(out_dir, state)
 
     if skipped:
         logger.info(
