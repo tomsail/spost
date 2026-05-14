@@ -21,6 +21,7 @@ import xarray as xr
 
 from spost._utils import build_edge_df
 from spost._utils import build_simplices
+from spost._utils import is_overlapping
 from spost._utils import open_zarr_store
 
 

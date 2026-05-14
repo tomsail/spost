@@ -44,10 +44,17 @@ def sanitize_attrs(attrs: dict) -> dict:
     return sanitized
 
 
+def is_overlapping(tris, meshx):
+    PIR = 180
+    x1, x2, x3 = meshx[tris].T
+    return np.logical_or(abs(x2 - x1) > PIR, abs(x3 - x1) > PIR, abs(x3 - x3) > PIR)
+
+
 def build_simplices(ds: xr.Dataset) -> pd.DataFrame:
     """Extract triangle simplices from SCHISM mesh for datashader rendering."""
     faces = ds["SCHISM_hgrid_face_nodes"].values.astype("int64") - 1
-    return pd.DataFrame(faces[:, :3] , columns=["v0", "v1", "v2"])
+    faces = faces[:, :3][~is_overlapping(faces[:, :3], ds["SCHISM_hgrid_node_x"].values)]
+    return pd.DataFrame(faces, columns=["v0", "v1", "v2"])
 
 
 def build_edge_df(coords_df: pd.DataFrame, simplices_df: pd.DataFrame, x: str = "SCHISM_hgrid_node_x", y: str = "SCHISM_hgrid_node_y") -> pd.DataFrame:
