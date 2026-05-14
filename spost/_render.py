@@ -86,6 +86,8 @@ def render_pngs(
     simplices_df = build_simplices(ds)
     if show_mesh:
         edge_df = build_edge_df(coords_df,simplices_df)
+    else:
+        edge_df = None
 
     canvas = datashader.Canvas(plot_width=width, plot_height=height)
     da = ds[variable]
