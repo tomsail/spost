@@ -5,8 +5,7 @@ import cyclopts
 from cyclopts.types import ExistingDirectory
 from cyclopts.types import ExistingPath
 
-from spost._constants import parse_bbox
-from spost._literals import RegionName
+from spost._region import BboxArg, WktArg, resolve_region
 
 
 def to_zarr(
@@ -74,7 +73,8 @@ def clip(
     input_path: pathlib.Path | None = None,
     output_path: pathlib.Path | None = None,
     overwrite: bool = False,
-    bbox: Annotated[RegionName, cyclopts.Parameter(converter=parse_bbox)] = "world",
+    bbox: BboxArg = None,
+    wkt: WktArg = None,
 ) -> None:
     """
     Clip a SCHISM zarr store to a bounding box and write a new store.
@@ -88,15 +88,20 @@ def clip(
     overwrite
         Overwrite existing output store.
     bbox
-        Bounding box as (`lon_min`, `lat_min`, `lon_max`, `lat_max`) or a region string.
-        Attention! If `lon_min` starts negative you need to use a = sign, eg: --bbox`=`"-4 0 10 30"
+        Explicit bounding box, four floats: lon_min lat_min lon_max lat_max.
+        Mutually exclusive with --wkt.
+    wkt
+        WKT polygon file, or the name of a bundled region under
+        spost/regions/ (e.g. ``--wkt med``). Mutually exclusive with --bbox.
     """
     from spost._clip import clip_zarr
+
+    region = resolve_region(bbox, wkt)
 
     clip_zarr(
         input_path=input_path,
         output_path=output_path or (input_path.parent / f"{input_path.stem}_clipped.zarr"),
-        bbox=bbox,
+        region=region,
         overwrite=overwrite,
     )
 
@@ -111,7 +116,8 @@ def to_pngs(
     cmap: str = "coolwarm",
     overwrite: bool = True,
     show_mesh: bool = False,
-    clip: Annotated[RegionName, cyclopts.Parameter(converter=parse_bbox)] = None,
+    bbox: BboxArg = None,
+    wkt: WktArg = None,
     workers: int = 4,
 ):
     """Render a variable from a zarr store to PNG frames.
@@ -133,9 +139,12 @@ def to_pngs(
         Append '_r' to reverse the colormap (e.g. 'fire_r', 'coolwarm_r').
     overwrite
         Re-render PNGs even if they already exist.
-    clip
-        Clip the rendering to bbox as (`lon_min`, `lat_min`, `lon_max`, `lat_max`) or a region string.
-        Attention! If `lon_min` starts negative you need to use a = sign, eg: --clip`=`"-4 0 10 30"
+    bbox
+        Explicit bounding box, four floats: lon_min lat_min lon_max lat_max.
+        Mutually exclusive with --wkt.
+    wkt
+        WKT polygon file, or the name of a bundled region (e.g. ``--wkt med``).
+        Mutually exclusive with --bbox.
     show_mesh
         If True, overlays the mesh edges on top of the variable rendering.
     workers
@@ -157,7 +166,7 @@ def to_pngs(
         height=height,
         cmap=cmap,
         overwrite=overwrite,
-        clip=clip,
+        region=resolve_region(bbox, wkt),
         show_mesh=show_mesh,
         workers=workers,
     )
@@ -174,7 +183,8 @@ def to_mp4(
     cmap: str = "coolwarm",
     png_dir: pathlib.Path | None = None,
     overwrite: bool = False,
-    clip: Annotated[RegionName, cyclopts.Parameter(converter=parse_bbox)] = None,
+    bbox: BboxArg = None,
+    wkt: WktArg = None,
     workers: int = 4,
 ):
     """Render a variable from a zarr store to an MP4 video.
@@ -201,9 +211,12 @@ def to_mp4(
         Directory for intermediate PNGs. Defaults to a hidden dir next to output.
     overwrite
         Re-render PNGs and MP4 even if they already exist.
-    clip
-        Clip the rendering to bbox as (`lon_min`, `lat_min`, `lon_max`, `lat_max`) or a region string.
-        Attention! If `lon_min` starts negative you need to use a = sign, eg: --clip`=`"-4 0 10 30"
+    bbox
+        Explicit bounding box, four floats: lon_min lat_min lon_max lat_max.
+        Mutually exclusive with --wkt.
+    wkt
+        WKT polygon file, or the name of a bundled region (e.g. ``--wkt med``).
+        Mutually exclusive with --bbox.
     """
     if output_path is None:
         output_path = pathlib.Path(f"./{variable}.mp4")
@@ -220,7 +233,7 @@ def to_mp4(
         cmap=cmap,
         overwrite=overwrite,
         png_dir=png_dir,
-        clip=clip,
+        region=resolve_region(bbox, wkt),
         workers=workers,
     )
 

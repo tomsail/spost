@@ -9,9 +9,10 @@ from __future__ import annotations
 import datetime
 import pathlib
 
+import cyclopts
 import pytest
 
-from spost._cli import app
+from spost import app
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ def test_extract_to_zarr_parses(tmp_path: pathlib.Path):
     assert kw["exclude_last"] == 1
 
 
-def test_extract_clip_parses_named_region(tmp_path: pathlib.Path):
+def test_extract_clip_parses_explicit_bbox(tmp_path: pathlib.Path):
     src = tmp_path / "in.zarr"
     src.mkdir()
     cmd, bound, _ = app.parse_args(
@@ -85,12 +86,58 @@ def test_extract_clip_parses_named_region(tmp_path: pathlib.Path):
             "--input-path",
             str(src),
             "--bbox",
+            "-5.5",
+            "30",
+            "42",
+            "47.5",
+        ]
+    )
+    assert cmd.__name__ == "clip"
+    assert bound.arguments["bbox"] == (-5.5, 30.0, 42.0, 47.5)
+    assert "wkt" not in bound.arguments  # mutually exclusive — only one is set
+
+
+def test_extract_clip_parses_wkt_name(tmp_path: pathlib.Path):
+    """``--wkt med`` resolves the bundled regions/med.wkt at command-body time."""
+    src = tmp_path / "in.zarr"
+    src.mkdir()
+    cmd, bound, _ = app.parse_args(
+        [
+            "extract",
+            "clip",
+            "--input-path",
+            str(src),
+            "--wkt",
             "med",
         ]
     )
     assert cmd.__name__ == "clip"
-    # The bbox converter resolves named regions to a 4-tuple.
-    assert bound.arguments["bbox"] == (-5.5, 30.0, 42.0, 47.5)
+    assert bound.arguments["wkt"] == pathlib.Path("med")
+    assert "bbox" not in bound.arguments
+
+
+def test_extract_clip_rejects_both_bbox_and_wkt(tmp_path: pathlib.Path):
+    """The mutually-exclusive cyclopts group must reject both at once."""
+    src = tmp_path / "in.zarr"
+    src.mkdir()
+    with pytest.raises(cyclopts.CycloptsError):
+        app.parse_args(
+            [
+                "extract",
+                "clip",
+                "--input-path",
+                str(src),
+                "--bbox",
+                "-5",
+                "30",
+                "42",
+                "47",
+                "--wkt",
+                "med",
+            ],
+            exit_on_error=False,
+            print_error=False,
+        )
 
 
 def test_extract_stations_parses(tmp_path: pathlib.Path):
@@ -288,16 +335,12 @@ def test_skill_report_parses_include_flags(tmp_path: pathlib.Path):
 
 def test_unknown_command_is_rejected():
     """Cyclopts surfaces unknown commands as a CycloptsError."""
-    import cyclopts
-
     with pytest.raises(cyclopts.CycloptsError):
         app.parse_args(["definitely-not-a-command"], exit_on_error=False, print_error=False)
 
 
 def test_to_zarr_rejects_missing_input(tmp_path: pathlib.Path):
     """``ExistingDirectory`` validator rejects nonexistent paths."""
-    import cyclopts
-
     missing = tmp_path / "does-not-exist"
     with pytest.raises(cyclopts.CycloptsError):
         app.parse_args(

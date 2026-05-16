@@ -5,17 +5,22 @@ import numpy as np
 import shapely
 import xarray as xr
 
-from spost._constants import REGIONS
-
 logger = logging.getLogger(__name__)
 
 
-def resolve_bbox(
-    bbox: tuple[float, float, float, float] | str | None = None,
+def resolve_region(
+    region: shapely.Geometry | tuple[float, float, float, float] | None = None,
 ) -> shapely.Polygon:
-    if bbox is None:
+    """Normalize the region argument to a shapely polygon.
+
+    Accepts an already-resolved shapely geometry, a 4-tuple bbox, or ``None``
+    (which yields the full world).
+    """
+    if region is None:
         return shapely.box(-180, -90, 180, 90)
-    return shapely.box(*bbox)
+    if isinstance(region, shapely.Geometry):
+        return region
+    return shapely.box(*region)
 
 
 def crop(x: np.ndarray, y: np.ndarray, tri: np.ndarray, bbox: tuple):
@@ -34,18 +39,18 @@ def crop(x: np.ndarray, y: np.ndarray, tri: np.ndarray, bbox: tuple):
     return nodes_mask, tri_mask, remapped_triface_nodes
 
 
-def clip_ds(ds: xr.Dataset, bbox: shapely.Polygon) -> xr.Dataset:
-    bbox = resolve_bbox(bbox)
+def clip_ds(ds: xr.Dataset, region: shapely.Polygon | tuple | None = None) -> xr.Dataset:
+    region = resolve_region(region)
     x = ds["SCHISM_hgrid_node_x"].values
     y = ds["SCHISM_hgrid_node_y"].values
     tri = ds["SCHISM_hgrid_face_nodes"].values[:, :3].astype(int) - 1  # convert to 0-based
-    nodes_mask, tri_mask, new_tri = crop(x, y, tri, bbox)
+    nodes_mask, tri_mask, new_tri = crop(x, y, tri, region)
     if len(nodes_mask) == 0 or len(new_tri) == 0:
-        raise ValueError("No nodes found inside the bounding box.")
+        raise ValueError("No nodes found inside the region.")
 
     n_orig = len(x)
     n_clipped = len(nodes_mask)
-    logger.info(f"Clipping to bbox: {bbox.bounds}")
+    logger.info(f"Clipping to region bounds: {region.bounds}")
     logger.info(f"Nodes: {n_orig} → {n_clipped}")
     logger.info(f"Faces: {len(tri)} → {len(new_tri)}")
     logger.info(f"Faces: {new_tri}")
@@ -71,11 +76,11 @@ def clip_ds(ds: xr.Dataset, bbox: shapely.Polygon) -> xr.Dataset:
 def clip_zarr(
     input_path: pathlib.Path,
     output_path: pathlib.Path,
-    bbox: shapely.Polygon | str,
+    region: shapely.Polygon | tuple | None = None,
     overwrite: bool = False,
 ) -> None:
     """
-    Clip a SCHISM zarr store to a bounding box and write a new store.
+    Clip a SCHISM zarr store to a region and write a new store.
 
     Parameters
     ----------
@@ -83,16 +88,15 @@ def clip_zarr(
         Path to the source zarr store.
     output_path
         Path for the clipped zarr store.
-    bbox
-        Bounding box as (lon_min, lat_min, lon_max, lat_max) or a shapely Polygon.
-    clevel
-        Compression level for output arrays.
+    region
+        Bounding box as (lon_min, lat_min, lon_max, lat_max), a shapely
+        polygon, or ``None`` for the full world.
     overwrite
         Overwrite existing output store.
     """
     ds = xr.open_zarr(input_path, chunks={})
 
-    ds_clipped = clip_ds(ds, bbox)
+    ds_clipped = clip_ds(ds, region)
 
     if overwrite and output_path.exists():
         import shutil

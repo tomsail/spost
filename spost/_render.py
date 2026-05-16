@@ -206,14 +206,14 @@ def _to_pngs(
     cmap: str | None = None,
     overwrite: bool = False,
     show_mesh: bool = False,
-    clip: tuple = None,
+    region=None,
     workers: int = 4,
 ) -> list[pathlib.Path]:
     ds = open_zarr_store(input_path)
-    if clip is not None:
+    if region is not None:
         from spost._clip import clip_ds
 
-        ds = clip_ds(ds, clip)
+        ds = clip_ds(ds, region)
     cmap_list = None
     if cmap is not None:
         name = cmap.removesuffix("_r")
@@ -247,7 +247,7 @@ def _to_mp4(
     cmap: str | None = None,
     overwrite: bool = False,
     png_dir: pathlib.Path | None = None,
-    clip: tuple = None,
+    region=None,
     workers: int = 4,
 ) -> pathlib.Path:
     if png_dir is None:
@@ -260,7 +260,7 @@ def _to_mp4(
         height=height,
         cmap=cmap,
         overwrite=overwrite,
-        clip=clip,
+        region=region,
         workers=workers,
     )
     return pngs_to_mp4(png_dir, output_path, framerate=framerate)
