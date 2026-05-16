@@ -5,7 +5,9 @@ import cyclopts
 from cyclopts.types import ExistingDirectory
 from cyclopts.types import ExistingPath
 
-from spost._region import BboxArg, WktArg, resolve_region
+from spost._region import BboxArg
+from spost._region import resolve_region
+from spost._region import WktArg
 
 
 def to_zarr(
@@ -105,17 +107,18 @@ def clip(
         overwrite=overwrite,
     )
 
+PLOT_GROUP = cyclopts.Group("Plotting Options")
 
 def to_pngs(
     *,
     input_path: ExistingPath,
     variable: str,
     output_path: pathlib.Path | None = None,
-    width: int = 1920,
-    height: int = 1080,
-    cmap: str = "coolwarm",
     overwrite: bool = True,
-    show_mesh: bool = False,
+    width: Annotated[int, cyclopts.Parameter(group=PLOT_GROUP)] = 1920,
+    height: Annotated[int, cyclopts.Parameter(group=PLOT_GROUP)] = 1080,
+    cmap: Annotated[str, cyclopts.Parameter(group=PLOT_GROUP)] = "coolwarm",
+    show_mesh: Annotated[bool, cyclopts.Parameter(group=PLOT_GROUP)] = False,
     bbox: BboxArg = None,
     wkt: WktArg = None,
     workers: int = 4,
