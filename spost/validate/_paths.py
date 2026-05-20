@@ -27,18 +27,6 @@ def run_zarr(run: str | None, zarr_path: pathlib.Path | None = None) -> pathlib.
     return pathlib.Path(f"./{run}.zarr")
 
 
-def get_station_data(
-    station_data_path: pathlib.Path | None = None,
-) -> pathlib.Path:
-    """Resolve the spost station-data directory.
-    """
-    import ioc_cleanup as C
-    ioc = C.get_meta()
-    stats = C.calc_statistics(ioc, stations_dir=C.TRANSFORMATIONS_DIR, pattern="*.json")
-    print(stats)
-
-    return station_data_path
-
 def default_meta_parquet(meta_parquet: pathlib.Path | None = None) -> pathlib.Path | None:
     """Return the user-supplied path or the bundled ``ioc_cleanup`` meta."""
     if meta_parquet is not None:

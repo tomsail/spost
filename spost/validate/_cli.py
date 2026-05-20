@@ -33,40 +33,30 @@ _DEFAULT_CACHE_DIR = _default_cache_dir
 _DEFAULT_OBS_DIR = _default_obs_dir
 
 
-def _split_csv(value: str | list[str] | None) -> list[str] | None:
-    if value is None:
-        return None
-    if isinstance(value, list):
-        return [v.strip() for v in value if v]
-    return [v.strip() for v in value.split(",") if v.strip()]
-
 def fetch_obs(
     *,
-    start: datetime.datetime,
-    end: datetime.datetime,
-    station_data_path: ResolvedDirectory = _DEFAULT_OBS_DIR,
-    run: str | None = None,
-    meta_parquet: pathlib.Path | None = None,
-    output_dir: pathlib.Path | None = None,
-    force: bool = False,
+    transformations_dir: pathlib.Path,
+    raw_data_folder: ResolvedDirectory = _DEFAULT_OBS_DIR / "raw",
+    output_dir: ResolvedDirectory = _DEFAULT_OBS_DIR / "clean",
+    overwrite: bool = False,
 ):
     """
     Fetch IOC observations and apply per-station transformations.
 
     Parameters
     ----------
-    start
-        Start of the validation window (inclusive). Required.
-    end
-        End of the validation window (inclusive). Required.
-    station_data_path
-        path to station parquet files. If not provided, will attempt to fetch from IOC.
-        Defaults to platform specific paths. Raw IOC data is cached in _DEFAULT_OBS_DIR/raw and clean in _DEFAULT_OBS_DIR/clean.
-    run
-        Optional name for this validation run, used to construct output paths.
-    meta_parquet
-        Optional path to meta parquet file. If not provided, will attempt to fetch from IOC.
-    force
+    transformations_dir
+        Optional path to directory containing per-station transformation JSON files.
+        If not provided, will attempt to load from the default transformations directory
+    raw_data_folder
+        Optional path to directory for caching raw IOC data. Defaults to platform specific paths.
+        If not provided, will attempt to load from the default raw data directory.
+        Raw data is cached in `_DEFAULT_OBS_DIR/raw`.
+    output_dir
+        Optional path to directory for storing cleaned IOC. Defaults to platform specific paths.
+        If not provided, will attempt to load from the default clean data directory.
+        Cleaned data is stored in `_DEFAULT_OBS_DIR/clean`.
+    overwrite
         If True, ignore any existing cached observations and re-fetch from IOC. Default False.
     """
 
@@ -74,12 +64,10 @@ def fetch_obs(
 
 
     _fetch_obs(
-        start=start,
-        end=end,
-        run=run,
-        station_data_path=station_data_path,
-        meta_parquet=meta_parquet,
-        force=force,
+        transformations_dir=transformations_dir,
+        raw_data_folder=raw_data_folder,
+        output_dir=output_dir,
+        overwrite=overwrite,
     )
 
 
@@ -185,7 +173,7 @@ def validate(
     run: str | None = None,
     start: datetime.datetime | None = None,
     end: datetime.datetime | None = None,
-    station_data_path: pathlib.Path | None = None,
+    clean_data_folder: pathlib.Path | None = None,
     meta_parquet: pathlib.Path | None = None,
     transformations_dir: pathlib.Path | None = None,
     output_dir: pathlib.Path | None = None,
@@ -194,7 +182,7 @@ def validate(
     report_format: str = "html",
     reference_metrics: pathlib.Path | None = None,
     name: str | None = None,
-    force: bool = False,
+    overwrite: bool = False,
 ):
     """Run the full validation station pipeline (fetch-obs -> compare -> report).
 
@@ -210,11 +198,9 @@ def validate(
     _fetch_obs(
         start=start,
         end=end,
-        run=run,
-        station_data_path=station_data_path,
-        meta_parquet=meta_parquet,
+        clean_data_folder=clean_data_folder,
         transformations_dir=transformations_dir,
-        force=force,
+        overwrite=overwrite,
     )
     _compare(
         start=start,
