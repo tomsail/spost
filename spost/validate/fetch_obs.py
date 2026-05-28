@@ -11,7 +11,7 @@ def _gather_codes(folder: pathlib.Path, suffix: str, remove_sensor = True, non_e
     Gather IOC codes from a folder by looking for files with a given suffix.
     If `sensor_pattern` is True, expects filenames of the form `{code}_{sensor}.parquet` and extracts just the code. Otherwise, expects filenames of the form `{code}.parquet`.
     """
-    codes: list[str] = []
+    codes: set[str] = set()
     if not folder.exists():
         if non_existant_fail:
             raise ValueError(f"folder {folder} does not exist")
@@ -26,8 +26,8 @@ def _gather_codes(folder: pathlib.Path, suffix: str, remove_sensor = True, non_e
             station, sensor = stem.split("_")
         else:
             station = path.stem
-        codes.append(station)
-    return codes
+        codes.add(station)
+    return sorted(codes)
 
 
 def fetch_obs(
@@ -39,42 +39,41 @@ def fetch_obs(
 ) -> pathlib.Path:
     import ioc_cleanup as C
     import pandas as pd
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     json_codes = _gather_codes(transformations_dir, '.json')
     json_full_codes = _gather_codes(transformations_dir, '.json', remove_sensor=False)
-    raw_codes = _gather_codes(raw_data_folder, '.parquet',non_existant_fail=False)
-    clean_codes = _gather_codes(output_dir, '.parquet', remove_sensor=False, non_existant_fail=False)
 
-    raw_candidates = sorted(json_codes & raw_codes) if raw_codes else sorted(json_codes)
-    clean_candidates = sorted(json_codes & clean_codes) if clean_codes else sorted(json_codes)
+    raw_candidates = sorted(json_codes)
+    clean_candidates = sorted(json_full_codes)
 
     raw_processed: list[str] = []
     clean_processed: list[str] = []
     skipped: list[str] = []
 
-    for code in raw_candidates:
-        for year in range(2020, 2026):
-            path = raw_data_folder / str(year) / f"{code}.parquet"
-            if not path.exists() or overwrite:
-                try:
-                    C.download_year_station(code, year, raw_data_folder)
-                except Exception as exc:
-                    logger.warning(f"Failed to fetch {code} for {year}: {exc}")
-                    skipped.append(code)
-        raw_processed.append(code)
-        print(f"Fetched raw data for {code}")
+    # for code in raw_candidates:
+    #     for year in range(2020, 2026):
+    #         path = raw_data_folder / str(year) / f"{code}.parquet"
+    #         if not path.exists() or overwrite:
+    #             try:
+    #                 C.download_year_station(code, year, raw_data_folder)
+    #             except Exception as exc:
+    #                 logger.warning(f"Failed to fetch {code} for {year}: {exc}")
+    #                 skipped.append(code)
+    #     raw_processed.append(code)
 
-    for icode, code in enumerate(clean_candidates):
+    for code in clean_candidates:
         if code in skipped:
             logger.warning(f"Skipping cleaning for {code} since it failed to fetch")
             continue
         try:
-            station, sensor = sorted(json_full_codes)[icode].split("_")
+            station, sensor = code.split("_")
             t = C.load_transformation(station, sensor, transformations_dir)
             ts = C.load_station(station, raw_data_folder)
             ts = C.transform(ts, t)[sensor]
             ts.attrs["cleaning_date"] = pd.Timestamp.now().isoformat()
-            ts.to_parquet(output_dir / f"{code}_{sensor}.parquet")
+            ts.attrs["instrument"] = sensor
+            ts.to_frame(name=sensor).to_parquet(output_dir / f"{station}_{sensor}.parquet")
         except Exception as exc:
             logger.warning(f"Failed to clean {code}: {exc}")
             skipped.append(code)

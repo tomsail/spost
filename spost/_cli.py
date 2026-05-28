@@ -119,6 +119,7 @@ def to_pngs(
     height: Annotated[int, cyclopts.Parameter(group=PLOT_GROUP)] = 1080,
     cmap: Annotated[str, cyclopts.Parameter(group=PLOT_GROUP)] = "coolwarm",
     show_mesh: Annotated[bool, cyclopts.Parameter(group=PLOT_GROUP)] = False,
+    depth_shading: Annotated[bool, cyclopts.Parameter(group=PLOT_GROUP)] = False,
     bbox: BboxArg = None,
     wkt: WktArg = None,
     workers: int = 4,
@@ -150,6 +151,8 @@ def to_pngs(
         Mutually exclusive with --bbox.
     show_mesh
         If True, overlays the mesh edges on top of the variable rendering.
+    depth_shading
+        If True, overlays a hillshade shading based on the depth variable
     workers
         Parallel worker count. Use ``--workers 1`` to run sequentially in
         the parent process - recommended on HPC login nodes where loky
@@ -171,6 +174,7 @@ def to_pngs(
         overwrite=overwrite,
         region=resolve_region(bbox, wkt),
         show_mesh=show_mesh,
+        depth_shading=depth_shading,
         workers=workers,
     )
 

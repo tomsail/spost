@@ -34,6 +34,70 @@ def _load_font(size: int = 20) -> PIL.ImageFont.FreeTypeFont | PIL.ImageFont.Ima
     return PIL.ImageFont.load_default()
 
 
+def _compute_pce_gradient(x, y, tri, f):
+    """
+    Per-Cell Linear Estimation: constant gradient per triangle.
+
+    ∇f_t = (f_j - f_i) · (v_i - v_k)⊥ / (2A)
+         + (f_k - f_i) · (v_j - v_i)⊥ / (2A)
+
+    Returns dfdx, dfdy, areas — all shape (n_tri,).
+    """
+    vi, vj, vk = tri.T
+    xi, yi, xj, yj, xk, yk = x[vi], y[vi], x[vj], y[vj], x[vk], y[vk]
+    fi, fj, fk = f[vi], f[vj], f[vk]
+
+    dxik, dyik = xi - xk, yi - yk
+    dxji, dyji = xj - xi, yj - yi
+
+    two_A = dxji * (yk - yi) - (xk - xi) * dyji
+    two_A = np.where(np.abs(two_A) < 1e-30, 1e-30, two_A)
+
+    dfdx = ((fj - fi) * (-dyik) + (fk - fi) * (-dyji)) / two_A
+    dfdy = ((fj - fi) * dxik + (fk - fi) * dxji) / two_A
+
+    return dfdx, dfdy, np.abs(two_A) / 2
+
+
+def _compute_ags_gradient(x, y, tri, f):
+    """
+    Average Gradient on Star: area-weighted average of PCE gradients onto nodes.
+
+    ∇f_v = Σ(A_sigma · ∇f_sigma) / Σ(A_sigma)  over all triangles sigma adjacent to node v.
+
+    Returns grad_x, grad_y — both shape (n_nodes,).
+    """
+    dfdx, dfdy, areas = _compute_pce_gradient(x, y, tri, f)
+
+    n = len(x)
+    grad_x, grad_y, total_area = np.zeros(n), np.zeros(n), np.zeros(n)
+
+    for col in range(3):
+        idx = tri[:, col]
+        np.add.at(grad_x, idx, areas * dfdx)
+        np.add.at(grad_y, idx, areas * dfdy)
+        np.add.at(total_area, idx, areas)
+
+    total_area = np.maximum(total_area, 1e-30)
+    return grad_x / total_area, grad_y / total_area
+
+
+def _hillshade(dzdx, dzdy, azimuth=315.0, altitude=45.0, z_factor=1.0):
+    """Hillshade illumination from gradient components"""
+    dzdx, dzdy = dzdx * z_factor, dzdy * z_factor
+    az, alt = np.radians(azimuth), np.radians(altitude)
+    slope = np.arctan(np.hypot(dzdx, dzdy))
+    aspect = np.arctan2(-dzdy, dzdx)
+    shade = np.sin(alt) * np.cos(slope) + np.cos(alt) * np.sin(slope) * np.cos(az - aspect)
+    return shade
+
+
+def _hillshade_unstruct(x,y,z,tri, azimuth=315.0, altitude=45.0, z_factor=1.0):
+    """Compute hillshade on a triangular mesh. Returns shade values on the nodes"""
+    dzdx, dzdy = _compute_ags_gradient(x, y, tri, z)
+    return _hillshade(dzdx, dzdy, azimuth, altitude, z_factor)
+
+
 def render_pngs(
     ds: xr.Dataset,
     variable: str,
@@ -43,6 +107,7 @@ def render_pngs(
     height: int = 1080,
     cmap: list | None = None,
     show_mesh: bool = False,
+    depth_shading: bool = False,
     overwrite: bool = True,
     font_size: int = 20,
     workers: int = 12,
@@ -67,6 +132,8 @@ def render_pngs(
         If True, overwrites PNGs that already exist.
     show_mesh
         If True, overlays the mesh edges on top of the variable rendering.
+    depth_shading
+        If True, overlays a hillshade shading based on the depth variable.
     font_size
         Font size for the timestamp overlay.
     workers
@@ -89,6 +156,11 @@ def render_pngs(
     else:
         edge_df = None
 
+    if depth_shading:
+        depth = ds.depth.values
+    else:
+        depth = None
+
     canvas = datashader.Canvas(plot_width=width, plot_height=height)
     da = ds[variable]
     has_time = "time" in da.dims
@@ -102,6 +174,7 @@ def render_pngs(
         coords_df: pd.DataFrame,
         simplices_df: pd.DataFrame,
         edge_df: pd.DataFrame | None,
+        depth: np.ndarray | None,
         da: xr.DataArray,
         variable: str,
         output_path: pathlib.Path,
@@ -122,6 +195,19 @@ def render_pngs(
             wireframe = tf.shade(canvas.line(edge_df, x="x", y="y", agg=datashader.reductions.any()), cmap=["black"])
             img = tf.stack(img, wireframe)
 
+        if depth is not None:
+            shade = _hillshade_unstruct(
+                coords_df.SCHISM_hgrid_node_x.values,
+                coords_df.SCHISM_hgrid_node_y.values,
+                depth,
+                simplices_df.values,
+            )
+            vertices_shade = coords_df.copy()
+            vertices_shade["hillshade"] = shade
+            agg_shade = canvas.trimesh(vertices=vertices_shade, simplices=simplices_df, agg=datashader.reductions.mean("hillshade"))
+            shade_img = tf.shade(1 - agg_shade, cmap=["white", "black"], how="linear", alpha=90)
+            img = tf.stack(img, shade_img)
+
         pil_img = img.to_pil()
         draw = PIL.ImageDraw.Draw(pil_img)
         if ts is not None:
@@ -134,6 +220,7 @@ def render_pngs(
         coords_df=coords_df,
         simplices_df=simplices_df,
         edge_df=edge_df,
+        depth=depth,
         da=da,
         variable=variable,
         output_path=output_path,
@@ -206,6 +293,7 @@ def _to_pngs(
     cmap: str | None = None,
     overwrite: bool = False,
     show_mesh: bool = False,
+    depth_shading: bool = False,
     region=None,
     workers: int = 4,
 ) -> list[pathlib.Path]:
@@ -232,6 +320,7 @@ def _to_pngs(
         cmap=cmap_list,
         overwrite=overwrite,
         show_mesh=show_mesh,
+        depth_shading=depth_shading,
         workers=workers,
     )
 
