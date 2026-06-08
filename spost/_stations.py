@@ -1,9 +1,9 @@
 """Station data extraction from SCHISM output."""
-
 from __future__ import annotations
 
 import datetime
 import functools
+import logging
 import pathlib
 import typing
 from collections.abc import Sequence
@@ -14,6 +14,8 @@ import numpy as np
 
 if typing.TYPE_CHECKING:
     import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 UTC = ZoneInfo("UTC")
 
@@ -97,6 +99,8 @@ def parse_staout(outputs_dir: pathlib.Path, staout_index: int) -> pd.DataFrame:
     start_date = parse_start_date_from_param_nml(outputs_dir / "param.out.nml")
     path = outputs_dir / f"staout_{staout_index}"
     array = np.loadtxt(path)
+    if array.size == 0:
+        raise ValueError(f"staout_{staout_index} is empty")
     df = pd.DataFrame(array)
     zero_col = df.pop(0)
     timedelta_index = pd.to_timedelta(
@@ -145,8 +149,9 @@ def _extract_stations(
         Which staout indices to process. Defaults to all known (1-9).
     """
     if staout_indices is None:
-        # Auto-detect which staout files exist
-        staout_indices = [idx for idx in STAOUT_VARIABLES if (outputs_dirs[0] / f"staout_{idx}").exists()]
+        staout_indices = [idx for idx in STAOUT_VARIABLES if (p := outputs_dirs[0] / f"staout_{idx}").exists() and p.stat().st_size > 0]
+
+    logger.info(f"Detected staout indices: {[f"{STAOUT_VARIABLES[idx]}idx" for idx in staout_indices]}")
 
     station_data = parse_station_in(outputs_dirs[0] / "station.in")
 

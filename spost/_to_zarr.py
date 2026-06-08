@@ -3,11 +3,10 @@ import pathlib
 import typing as ty
 from collections.abc import Sequence
 
+import multifutures as mf
 import natsort
 import numpy as np
-import multifutures as mf
 import xarray as xr
-import zarr
 import zarr.codecs
 
 from ._utils import open_schism_output
@@ -108,6 +107,8 @@ def create_2D_array(
     pattern: str,
     zarr_variable: str,
     clevel: int = 3,
+    node_chunk: int = 500,
+    node_shard: int = 50000,
     exclude_last: int = 0,
 ):
     group = zarr.open_group(store=store_path)
@@ -122,23 +123,24 @@ def create_2D_array(
         dtype=da.dtype,
         dimension_names=da.dims,
         attributes=sanitize_attrs(da.attrs),
-        chunks=(1, len(da.nSCHISM_hgrid_node)),
+        chunks=(len(da.time), node_chunk),
+        shards=(len(da.time), node_shard),
         overwrite=True,
         fill_value=None,
         compressors=(get_compressor(clevel),),
     )
 
 
-def process_timestamp(
+def process_spatial_chunk(
     store_path: pathlib.Path,
     zarr_variable: str,
     da: xr.DataArray,
-    ts: np.datetime64,
-    index: int,
+    node_start: int,
+    node_end: int,
 ):
     group = zarr.open_group(store_path)
     array = group[zarr_variable]
-    array[index, :] = da.sel(time=ts).values
+    array[:, node_start:node_end] = da.isel(nSCHISM_hgrid_node=slice(node_start, node_end)).values
 
 
 def populate_array(
@@ -147,6 +149,7 @@ def populate_array(
     nc_variable: str,
     zarr_variable: str,
     pattern: str,
+    node_chunk: int = 500,
     workers: int = 12,
     exclude_last: int = 0,
 ):
@@ -155,9 +158,11 @@ def populate_array(
     # If 3D variable, select top layer
     if "nSCHISM_vgrid_layers" in da.dims:
         da = da.isel(nSCHISM_vgrid_layers=-1)
+    n_nodes = len(da.nSCHISM_hgrid_node)
+    chunk_ranges = [(i, min(i + node_chunk, n_nodes)) for i in range(0, n_nodes, node_chunk)]
     _ = mf.multiprocess(
-        func=functools.partial(process_timestamp, store_path=store_path, zarr_variable=zarr_variable, da=da),
-        func_kwargs=[dict(ts=ts, index=index) for index, ts in enumerate(ds.time.values)],
+        func=functools.partial(process_spatial_chunk, store_path=store_path, zarr_variable=zarr_variable, da=da),
+        func_kwargs=[dict(node_start=start, node_end=end) for start, end in chunk_ranges],
         max_workers=workers,
         include_kwargs=False,
         check=True,

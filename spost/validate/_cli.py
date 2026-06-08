@@ -33,68 +33,40 @@ _DEFAULT_CACHE_DIR = _default_cache_dir
 _DEFAULT_OBS_DIR = _default_obs_dir
 
 
-def fetch_obs(
+def compare(
     *,
-    transformations_dir: pathlib.Path,
-    raw_data_folder: ResolvedDirectory = _DEFAULT_OBS_DIR / "raw",
-    output_dir: ResolvedDirectory = _DEFAULT_OBS_DIR / "clean",
-    overwrite: bool = False,
+    sim_dir: pathlib.Path,
+    obs_dir: pathlib.Path,
+    output_path: pathlib.Path | None = None,
+    variables: Annotated[list[str], Parameter(consume_multiple=True, negative=())] = ["elev"],
+    overwrite: Annotated[bool, Parameter(negative=())] = False
 ):
     """
-    Fetch IOC observations and apply per-station transformations.
+    Align model and obs and compute seastats skill metrics.
 
     Parameters
     ----------
-    transformations_dir
-        Optional path to directory containing per-station transformation JSON files.
-        If not provided, will attempt to load from the default transformations directory
-    raw_data_folder
-        Optional path to directory for caching raw IOC data. Defaults to platform specific paths.
-        If not provided, will attempt to load from the default raw data directory.
-        Raw data is cached in `_DEFAULT_OBS_DIR/raw`.
-    output_dir
-        Optional path to directory for storing cleaned IOC. Defaults to platform specific paths.
-        If not provided, will attempt to load from the default clean data directory.
-        Cleaned data is stored in `_DEFAULT_OBS_DIR/clean`.
+    sim_dir
+        Path to directory containing model output parquets files.
+    obs_dir
+        Path to directory containing (cleaned) observation parquet files.
+    output_path
+        Optional path to directory for storing comparison outputs (aligned time-series, metrics parquet).
+        Defaults to `comparisons/{sim_dir.name}_{obs_dir.name}`.
+    variables
+        List of variable names to compare (e.g. ["elev", "ssh"]).
     overwrite
-        If True, ignore any existing cached observations and re-fetch from IOC. Default False.
+        If True, ignore any existing outputs and re-run comparison.
     """
 
-    from spost.validate import fetch_obs as _fetch_obs
-
-
-    _fetch_obs(
-        transformations_dir=transformations_dir,
-        raw_data_folder=raw_data_folder,
-        output_dir=output_dir,
-        overwrite=overwrite,
-    )
-
-
-def compare(
-    *,
-    run: str | None = None,
-    start: datetime.datetime | None = None,
-    end: datetime.datetime | None = None,
-    station_data_path: pathlib.Path | None = None,
-    obs_dir: pathlib.Path | None = None,
-    output_dir: pathlib.Path | None = None,
-    spinup_days: int = 0,
-    variables: Annotated[list[str], Parameter(consume_multiple=True)] = ["elev"],
-):
-    """Align model and obs and compute seastats skill metrics."""
-
-    from spost.validate import compare as _compare
+    from spost.validate._1D_analysis import compare as _compare
 
     _compare(
-        start=start,
-        end=end,
-        run=run,
-        station_data_path=station_data_path,
+        sim_dir=sim_dir,
         obs_dir=obs_dir,
-        output_dir=output_dir,
-        spinup_days=spinup_days,
+        output_path=output_path,
         variables=tuple(variables),
+        overwrite=overwrite,
     )
 
 
@@ -131,7 +103,7 @@ def tidal(
 def report(
     *,
     run: str | None = None,
-    output_dir: pathlib.Path | None = None,
+    output_path: pathlib.Path | None = None,
     metrics_parquet: pathlib.Path | None = None,
     station_data_path: pathlib.Path | None = None,
     obs_dir: pathlib.Path | None = None,
@@ -151,7 +123,7 @@ def report(
 
     _report(
         run=run,
-        output_dir=output_dir,
+        output_path=output_path,
         metrics_parquet=metrics_parquet,
         station_data_path=station_data_path,
         obs_dir=obs_dir,
@@ -176,13 +148,13 @@ def validate(
     clean_data_folder: pathlib.Path | None = None,
     meta_parquet: pathlib.Path | None = None,
     transformations_dir: pathlib.Path | None = None,
-    output_dir: pathlib.Path | None = None,
-    variables: Annotated[list[str], Parameter(consume_multiple=True)] = ["elev"],
+    output_path: pathlib.Path | None = None,
+    variables: Annotated[list[str], Parameter(consume_multiple=True, negative=())] = ["elev"],
     spinup_days: int = 0,
     report_format: str = "html",
     reference_metrics: pathlib.Path | None = None,
     name: str | None = None,
-    overwrite: bool = False,
+        overwrite: Annotated[bool, Parameter(negative=())] = False,
 ):
     """Run the full validation station pipeline (fetch-obs -> compare -> report).
 
@@ -190,10 +162,6 @@ def validate(
     sequence. ``tidal-analysis`` is intentionally excluded - it's a heavier
     standalone computation.
     """
-
-    from spost.validate import compare as _compare
-    from spost.validate import fetch_obs as _fetch_obs
-    from spost.validate import report as _report
 
     _fetch_obs(
         start=start,
@@ -207,13 +175,13 @@ def validate(
         end=end,
         run=run,
         station_data_path=station_data_path,
-        output_dir=output_dir,
+        output_path=output_path,
         spinup_days=spinup_days,
         variables=tuple(variables),
     )
     _report(
         run=run,
-        output_dir=output_dir,
+        output_path=output_path,
         station_data_path=station_data_path,
         format=report_format,
         reference_metrics=reference_metrics,

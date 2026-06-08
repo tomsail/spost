@@ -14,10 +14,10 @@ def to_zarr(
     *,
     input_path: ExistingDirectory | None = None,
     output: pathlib.Path | None = None,
-    variables: Annotated[list[str], cyclopts.Parameter(consume_multiple=True)] = ["all"],
+    variables: Annotated[list[str], cyclopts.Parameter(consume_multiple=True, negative=())] = ["all"],
     workers: int = 12,
     clevel: int = 3,
-    overwrite: bool = False,
+    overwrite: Annotated[bool, cyclopts.Parameter(negative=())] = False,
     exclude_last: int = 0,
 ):
     """
@@ -74,7 +74,7 @@ def clip(
     *,
     input_path: pathlib.Path | None = None,
     output_path: pathlib.Path | None = None,
-    overwrite: bool = False,
+    overwrite: Annotated[bool, cyclopts.Parameter(negative=())] = False,
     bbox: BboxArg = None,
     wkt: WktArg = None,
 ) -> None:
@@ -114,13 +114,13 @@ def to_pngs(
     input_path: ExistingPath,
     variable: str,
     output_path: pathlib.Path | None = None,
-    overwrite: bool = True,
+    overwrite: Annotated[bool, cyclopts.Parameter(negative=())] = False,
     width: Annotated[int, cyclopts.Parameter(group=PLOT_GROUP)] = 1920,
     height: Annotated[int, cyclopts.Parameter(group=PLOT_GROUP)] = 1080,
     cmap: Annotated[str, cyclopts.Parameter(group=PLOT_GROUP)] = "coolwarm",
-    show_mesh: Annotated[bool, cyclopts.Parameter(group=PLOT_GROUP)] = False,
-    depth_shading: Annotated[bool, cyclopts.Parameter(group=PLOT_GROUP)] = False,
-    bbox: BboxArg = None,
+    show_mesh: Annotated[bool, cyclopts.Parameter(group=PLOT_GROUP, negative=())] = False,
+    depth_shading: Annotated[bool, cyclopts.Parameter(group=PLOT_GROUP, negative=())] = False,
+    bbox: Annotated[BboxArg, cyclopts.Parameter(negative=())] = None,
     wkt: WktArg = None,
     workers: int = 4,
 ):
@@ -189,8 +189,8 @@ def to_mp4(
     framerate: int = 48,
     cmap: str = "coolwarm",
     png_dir: pathlib.Path | None = None,
-    overwrite: bool = False,
-    bbox: BboxArg = None,
+    overwrite: Annotated[bool, cyclopts.Parameter(negative=())] = False,
+    bbox: Annotated[BboxArg, cyclopts.Parameter(negative=())] = None,
     wkt: WktArg = None,
     workers: int = 4,
 ):
@@ -219,7 +219,7 @@ def to_mp4(
     overwrite
         Re-render PNGs and MP4 even if they already exist.
     bbox
-        Explicit bounding box, four floats: lon_min lat_min lon_max lat_max.
+        Explicit bounding box: lon_min lat_min lon_max lat_max.
         Mutually exclusive with --wkt.
     wkt
         WKT polygon file, or the name of a bundled region (e.g. ``--wkt med``).

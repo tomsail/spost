@@ -10,7 +10,6 @@ from ._cli import to_mp4
 from ._cli import to_pngs
 from ._cli import to_zarr
 from .validate._cli import compare
-from .validate._cli import fetch_obs
 from .validate._cli import report
 from .validate._cli import tidal
 from .validate._cli import validate
@@ -36,25 +35,26 @@ plot_app = register_subcommand(app, "plot", "Produce graphs from SCHISM outputs"
 skill_app = register_subcommand(app, "skill", "Validation pipeline: fetch obs, compare, tidal harmonics, report.")
 
 # Groups in extract
-zarr_group = Group("Zarr tools", sort_key=0)
-staout_group = Group("Staout tools", sort_key=2)
+convert_group = Group("Conversion", sort_key=0)
+extract1D_group = Group("Extract Time Series", sort_key=2)
+extract2D_group = Group("Extract Maps", sort_key=3)
+transects_group = Group("Extract Transects", sort_key=4)
 group_commands=Group("Commands", sort_key=3),
 
 # Groups in plot
 render_group = Group("Render tools", sort_key=0)
 
 # Groups in skill
-station_group = Group("Discrete Station Comparisons", sort_key=0)
+station_group = Group("1D TS analysis", sort_key=0)
 map_group = Group("2D analysis", sort_key=1)
 report_group = Group("Reporting", sort_key=2)
 auto_group = Group("Auto", sort_key=3)
 
-_ = extract_app.command(to_zarr, group=zarr_group)
-_ = extract_app.command(clip, group=zarr_group)
+_ = extract_app.command(to_zarr, group=convert_group)
+_ = extract_app.command(stations, group=extract1D_group)
+_ = extract_app.command(clip, group=extract2D_group)
 _ = plot_app.command(to_pngs, group=render_group)
 _ = plot_app.command(to_mp4, group=render_group)
-_ = extract_app.command(stations, group=staout_group)
-_ = skill_app.command(fetch_obs, group=station_group)
 _ = skill_app.command(compare, group=station_group)
 _ = skill_app.command(tidal, group=map_group)
 _ = skill_app.command(report, group=report_group)
@@ -64,7 +64,7 @@ _ = skill_app.command(validate, group=auto_group)
 def _meta(
     *tokens: typing.Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     config: ResolvedExistingFile | None = None,
-    verbose: bool = False,
+    verbose: typing.Annotated[bool, cyclopts.Parameter(negative=())] = False,
 ):
     """
     Post processing tools for SCHISM output
