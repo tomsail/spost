@@ -4,7 +4,6 @@ import typing as ty
 from collections.abc import Sequence
 
 import multifutures as mf
-import natsort
 import numpy as np
 import xarray as xr
 import zarr.codecs
@@ -123,7 +122,7 @@ def create_2D_array(
         dtype=da.dtype,
         dimension_names=da.dims,
         attributes=sanitize_attrs(da.attrs),
-        chunks=(len(da.time), node_chunk),
+        chunks=(1, node_chunk),
         shards=(len(da.time), node_shard),
         overwrite=True,
         fill_value=None,
@@ -137,10 +136,12 @@ def process_spatial_chunk(
     da: xr.DataArray,
     node_start: int,
     node_end: int,
+    ts: np.datetime64,
+    index: int,
 ):
     group = zarr.open_group(store_path)
     array = group[zarr_variable]
-    array[:, node_start:node_end] = da.isel(nSCHISM_hgrid_node=slice(node_start, node_end)).values
+    array[index, node_start:node_end] = da.sel(time=ts).isel(nSCHISM_hgrid_node=slice(node_start, node_end)).values
 
 
 def populate_array(
@@ -162,7 +163,11 @@ def populate_array(
     chunk_ranges = [(i, min(i + node_chunk, n_nodes)) for i in range(0, n_nodes, node_chunk)]
     _ = mf.multiprocess(
         func=functools.partial(process_spatial_chunk, store_path=store_path, zarr_variable=zarr_variable, da=da),
-        func_kwargs=[dict(node_start=start, node_end=end) for start, end in chunk_ranges],
+        func_kwargs=[
+            dict(ts=ts, index=index, node_start=start, node_end=end)
+            for index, ts in enumerate(ds.time.values)
+            for start, end in chunk_ranges
+        ],
         max_workers=workers,
         include_kwargs=False,
         check=True,
@@ -175,6 +180,8 @@ def to_zarr(
     variables: Sequence[str],
     workers: int = 12,
     clevel: int = 3,
+    node_chunk: int = 500,
+    node_shard: int = 50000,
     overwrite: bool = False,
     exclude_last: int = 0,
 ):
@@ -183,8 +190,23 @@ def to_zarr(
         variables = list(VARIABLE_SPECS.keys())
     for var in variables:
         spec = VARIABLE_SPECS[var]
-        create_2D_array(base_path, store_path, clevel=clevel, exclude_last=exclude_last, **spec)
+        create_2D_array(
+            base_path,
+            store_path,
+            clevel=clevel,
+            node_chunk=node_chunk,
+            node_shard=node_shard,
+            exclude_last=exclude_last,
+            **spec,
+        )
     zarr.consolidate_metadata(store_path)
     for var in variables:
         spec = VARIABLE_SPECS[var]
-        populate_array(base_path, store_path, workers=workers, exclude_last=exclude_last, **spec)
+        populate_array(
+            base_path,
+            store_path,
+            node_chunk=node_chunk,
+            workers=workers,
+            exclude_last=exclude_last,
+            **spec,
+        )
