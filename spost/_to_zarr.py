@@ -136,12 +136,10 @@ def process_spatial_chunk(
     da: xr.DataArray,
     node_start: int,
     node_end: int,
-    ts: np.datetime64,
-    index: int,
 ):
     group = zarr.open_group(store_path)
     array = group[zarr_variable]
-    array[index, node_start:node_end] = da.sel(time=ts).isel(nSCHISM_hgrid_node=slice(node_start, node_end)).values
+    array[:, node_start:node_end] = da.isel(nSCHISM_hgrid_node=slice(node_start, node_end)).values
 
 
 def populate_array(
@@ -163,11 +161,7 @@ def populate_array(
     chunk_ranges = [(i, min(i + node_chunk, n_nodes)) for i in range(0, n_nodes, node_chunk)]
     _ = mf.multiprocess(
         func=functools.partial(process_spatial_chunk, store_path=store_path, zarr_variable=zarr_variable, da=da),
-        func_kwargs=[
-            dict(ts=ts, index=index, node_start=start, node_end=end)
-            for index, ts in enumerate(ds.time.values)
-            for start, end in chunk_ranges
-        ],
+        func_kwargs=[dict(node_start=start, node_end=end) for start, end in chunk_ranges],
         max_workers=workers,
         include_kwargs=False,
         check=True,
