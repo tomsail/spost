@@ -122,7 +122,7 @@ def create_2D_array(
         dtype=da.dtype,
         dimension_names=da.dims,
         attributes=sanitize_attrs(da.attrs),
-        chunks=(1, node_chunk),
+        chunks=(len(da.time), node_chunk),
         shards=(len(da.time), node_shard),
         overwrite=True,
         fill_value=None,
@@ -139,7 +139,7 @@ def process_spatial_chunk(
 ):
     group = zarr.open_group(store_path)
     array = group[zarr_variable]
-    array[:, node_start:node_end] = da.isel(nSCHISM_hgrid_node=slice(node_start, node_end)).values
+    array[:, node_start:node_end] = da.values
 
 
 def populate_array(
@@ -158,10 +158,13 @@ def populate_array(
     if "nSCHISM_vgrid_layers" in da.dims:
         da = da.isel(nSCHISM_vgrid_layers=-1)
     n_nodes = len(da.nSCHISM_hgrid_node)
-    chunk_ranges = [(i, min(i + node_chunk, n_nodes)) for i in range(0, n_nodes, node_chunk)]
+    node_chunk_ranges = [(i, min(i + node_chunk, n_nodes)) for i in range(0, n_nodes, node_chunk)]
     _ = mf.multiprocess(
         func=functools.partial(process_spatial_chunk, store_path=store_path, zarr_variable=zarr_variable, da=da),
-        func_kwargs=[dict(node_start=start, node_end=end) for start, end in chunk_ranges],
+        func_kwargs=[
+            dict(node_start=ss, node_end=ee)
+            for ss, ee in node_chunk_ranges
+        ],
         max_workers=workers,
         include_kwargs=False,
         check=True,

@@ -4,6 +4,7 @@ from typing import Annotated
 import cyclopts
 from cyclopts.types import ExistingDirectory
 from cyclopts.types import ExistingPath
+from cyclopts.types import ResolvedFile
 
 from spost._region import BboxArg
 from spost._region import resolve_region
@@ -16,6 +17,8 @@ def to_zarr(
     output: pathlib.Path | None = None,
     variables: Annotated[list[str], cyclopts.Parameter(consume_multiple=True, negative=())] = ["all"],
     workers: int = 12,
+    node_chunk: int = 500,
+    node_shard: int = 50000,
     clevel: int = 3,
     overwrite: Annotated[bool, cyclopts.Parameter(negative=())] = False,
     exclude_last: int = 0,
@@ -40,6 +43,10 @@ def to_zarr(
         Which variables to include.
     workers
         Number of parallel workers.
+    node_chunk
+        Number of nodes per chunk. Adjust based on memory constraints and mesh size.
+    node_shard
+        Number of nodes per shard. Adjust based on mesh size and desired shard count.
     clevel
         Compression level (1-9).
     overwrite
@@ -64,6 +71,8 @@ def to_zarr(
         store_path=output,
         variables=variables,
         workers=workers,
+        node_chunk=node_chunk,
+        node_shard=node_shard,
         clevel=clevel,
         overwrite=overwrite,
         exclude_last=exclude_last,
@@ -277,4 +286,30 @@ def stations(
         outputs_dirs=outputs_dirs,
         output_path=output_path,
         staout_indices=staout_indices,
+    )
+
+def tide(
+    *,
+    input_path: ExistingPath,
+    output: ResolvedFile,
+    chunk_size: int = 100,
+):
+    """
+    Compute tidal constituent maps from SCHISM elevation output.
+
+    Parameters
+    ----------
+    input_path
+        Path to the zarr store.
+    output : Path
+        Output NetCDF file path for tidal coefficients.
+    chunk_size : int
+        Number of nodes per joblib chunk.
+    """
+    from spost._tide import compute_tidemap
+
+    compute_tidemap(
+        input_path=input_path,
+        output=output,
+        chunk_size=chunk_size,
     )

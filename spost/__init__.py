@@ -6,12 +6,12 @@ from cyclopts.types import ResolvedExistingFile
 
 from ._cli import clip
 from ._cli import stations
+from ._cli import tide
 from ._cli import to_mp4
 from ._cli import to_pngs
 from ._cli import to_zarr
 from .validate._cli import compare
 from .validate._cli import report
-from .validate._cli import tidal
 from .validate._cli import validate
 
 # Store all subcommand apps in a list for easy config application
@@ -53,10 +53,10 @@ auto_group = Group("Auto", sort_key=3)
 _ = extract_app.command(to_zarr, group=convert_group)
 _ = extract_app.command(stations, group=extract1D_group)
 _ = extract_app.command(clip, group=extract2D_group)
+_ = extract_app.command(tide, group=extract2D_group)
 _ = plot_app.command(to_pngs, group=render_group)
 _ = plot_app.command(to_mp4, group=render_group)
 _ = skill_app.command(compare, group=station_group)
-_ = skill_app.command(tidal, group=map_group)
 _ = skill_app.command(report, group=report_group)
 _ = skill_app.command(validate, group=auto_group)
 
