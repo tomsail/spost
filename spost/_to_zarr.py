@@ -133,13 +133,13 @@ def create_2D_array(
 def process_spatial_chunk(
     store_path: pathlib.Path,
     zarr_variable: str,
-    da: xr.DataArray,
+    data: np.ndarray,
     node_start: int,
     node_end: int,
 ):
     group = zarr.open_group(store_path)
     array = group[zarr_variable]
-    array[:, node_start:node_end] = da.values
+    array[:, node_start:node_end] = data[:, node_start:node_end]
 
 
 def populate_array(
@@ -157,10 +157,12 @@ def populate_array(
     # If 3D variable, select top layer
     if "nSCHISM_vgrid_layers" in da.dims:
         da = da.isel(nSCHISM_vgrid_layers=-1)
-    n_nodes = len(da.nSCHISM_hgrid_node)
+    # Load entire array into memory once to avoid pickle/serialization issues
+    data = da.values
+    n_nodes = data.shape[1]
     node_chunk_ranges = [(i, min(i + node_chunk, n_nodes)) for i in range(0, n_nodes, node_chunk)]
-    _ = mf.multiprocess(
-        func=functools.partial(process_spatial_chunk, store_path=store_path, zarr_variable=zarr_variable, da=da),
+    _ = mf.multithread(
+        func=functools.partial(process_spatial_chunk, store_path=store_path, zarr_variable=zarr_variable, data=data),
         func_kwargs=[
             dict(node_start=ss, node_end=ee)
             for ss, ee in node_chunk_ranges
