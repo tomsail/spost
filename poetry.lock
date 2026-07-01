@@ -282,10 +282,10 @@ ujson = ["ujson (>=5.10.0)"]
 name = "certifi"
 version = "2026.5.20"
 description = "Python package for providing Mozilla's CA Bundle."
-optional = true
+optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "(sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\") and (extra == \"image\" or extra == \"complete\" or extra == \"validate\" or extra == \"schism\")"
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
 files = [
     {file = "certifi-2026.5.20-py3-none-any.whl", hash = "sha256:3c52e209ba0a4ad7aebe60436a4ab349c39e1e602e8c134221e546902ad25897"},
     {file = "certifi-2026.5.20.tar.gz", hash = "sha256:69dea482ab64caa7b9f6aba1c6bf48bb6a5448d1c0f1b17ab42ad8c763a5344d"},
@@ -1311,6 +1311,44 @@ pandas = ">=1.5.0"
 lzo = ["python-lzo"]
 
 [[package]]
+name = "flexcache"
+version = "0.3"
+description = "Saves and loads to the cache a transformed versions of a source object."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
+files = [
+    {file = "flexcache-0.3-py3-none-any.whl", hash = "sha256:d43c9fea82336af6e0115e308d9d33a185390b8346a017564611f1466dcd2e32"},
+    {file = "flexcache-0.3.tar.gz", hash = "sha256:18743bd5a0621bfe2cf8d519e4c3bfdf57a269c15d1ced3fb4b64e0ff4600656"},
+]
+
+[package.dependencies]
+typing-extensions = "*"
+
+[package.extras]
+test = ["pytest", "pytest-cov", "pytest-mpl", "pytest-subtests"]
+
+[[package]]
+name = "flexparser"
+version = "0.4"
+description = "Parsing made fun ... using typing."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
+files = [
+    {file = "flexparser-0.4-py3-none-any.whl", hash = "sha256:3738b456192dcb3e15620f324c447721023c0293f6af9955b481e91d00179846"},
+    {file = "flexparser-0.4.tar.gz", hash = "sha256:266d98905595be2ccc5da964fe0a2c3526fbbffdc45b65b3146d75db992ef6b2"},
+]
+
+[package.dependencies]
+typing-extensions = "*"
+
+[package.extras]
+test = ["pytest", "pytest-cov", "pytest-mpl", "pytest-subtests"]
+
+[[package]]
 name = "flox"
 version = "0.11.2"
 description = "GroupBy operations for dask.array"
@@ -1578,10 +1616,10 @@ files = [
 name = "h5netcdf"
 version = "1.8.1"
 description = "netCDF4 via h5py"
-optional = true
+optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "(sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\") and (extra == \"complete\" or extra == \"validate\")"
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
 files = [
     {file = "h5netcdf-1.8.1-py3-none-any.whl", hash = "sha256:a76ed7cfc9b8a8908ea7057c4e57e27307acff1049b7f5ed52db6c2247636879"},
     {file = "h5netcdf-1.8.1.tar.gz", hash = "sha256:9b396a4cc346050fc1a4df8523bc1853681ec3544e0449027ae397cb953c7a16"},
@@ -2369,10 +2407,10 @@ tests = ["packaging", "psutil", "pytest"]
 name = "lxml"
 version = "6.1.1"
 description = "Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API."
-optional = true
+optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "(sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\") and (extra == \"complete\" or extra == \"validate\")"
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
 files = [
     {file = "lxml-6.1.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:09dd5b7075dc2f7709654a46543ba1ea3c2e217b2ed8fbd413a8a945a0f40f60"},
     {file = "lxml-6.1.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:f6ac4ef4d82dff54670227a69c67782ae0b811b5cf6b17954f1e8f7502fc0d1d"},
@@ -3811,17 +3849,52 @@ tests = ["check-manifest", "coverage (>=7.4.2)", "defusedxml", "markdown2", "ole
 xmp = ["defusedxml"]
 
 [[package]]
+name = "pint"
+version = "0.25.3"
+description = "Physical quantities module"
+optional = false
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
+files = [
+    {file = "pint-0.25.3-py3-none-any.whl", hash = "sha256:27eb25143bd5de9fcc4d5a4b484f16faf6b4615aa93ece6b3373a8c1a3c1b97d"},
+    {file = "pint-0.25.3.tar.gz", hash = "sha256:f8f5df6cf65314d74da1ade1bf96f8e3e4d0c41b51577ac53c49e7d44ca5acee"},
+]
+
+[package.dependencies]
+flexcache = ">=0.3"
+flexparser = ">=0.4"
+platformdirs = ">=2.1.0"
+typing-extensions = ">=4.0.0"
+
+[package.extras]
+all = ["babel (<=2.8)", "dask (<2025.3.0)", "matplotlib", "numpy (>=1.23)", "pint-pandas (>=0.3)", "scipy", "uncertainties (>=3.1.6)", "xarray"]
+babel = ["babel (<=2.8)"]
+codspeed = ["pytest", "pytest-benchmark", "pytest-codspeed", "pytest-cov", "pytest-mpl", "pytest-subtests"]
+dask = ["dask (<2025.3.0)"]
+docs = ["babel", "commonmark (==0.8.1)", "currencyconverter", "docutils", "graphviz", "ipykernel", "ipython (<=8.12)", "jupyter-client", "nbsphinx", "pooch", "pygments (>=2.4)", "recommonmark (==0.5.0)", "sciform", "scipy", "serialize", "sparse", "sphinx (>=6,<8.2)", "sphinx-book-theme (>=1.1.0)", "sphinx-copybutton", "sphinx-design"]
+matplotlib = ["matplotlib"]
+numpy = ["numpy (>=1.23)"]
+pandas = ["pint-pandas (>=0.3)"]
+scipy = ["scipy"]
+test = ["pytest", "pytest-benchmark", "pytest-cov", "pytest-subtests"]
+test-all = ["pytest", "pytest-benchmark", "pytest-cov", "pytest-mpl", "pytest-subtests"]
+test-mpl = ["pytest-mpl"]
+uncertainties = ["uncertainties (>=3.1.6)"]
+xarray = ["xarray"]
+
+[[package]]
 name = "platformdirs"
 version = "4.10.0"
 description = "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`."
 optional = false
 python-versions = ">=3.10"
 groups = ["main", "dev"]
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
 files = [
     {file = "platformdirs-4.10.0-py3-none-any.whl", hash = "sha256:fb516cdb12eb0d857d0cd85a7c57cea4d060bee4578d6cf5a14dfdf8cbf8784a"},
     {file = "platformdirs-4.10.0.tar.gz", hash = "sha256:31e761a6a0ca04faf7353ea759bdba55652be214725111e5aac52dfa29d4bef7"},
 ]
-markers = {main = "(sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\") and (extra == \"complete\" or extra == \"validate\")", dev = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""}
 
 [[package]]
 name = "pluggy"
@@ -4352,10 +4425,10 @@ diagrams = ["jinja2", "railroad-diagrams"]
 name = "pyproj"
 version = "3.7.2"
 description = "Python interface to PROJ (cartographic projections and coordinate transformations library)"
-optional = true
+optional = false
 python-versions = ">=3.11"
 groups = ["main"]
-markers = "(sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\") and (extra == \"complete\" or extra == \"validate\")"
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
 files = [
     {file = "pyproj-3.7.2-cp311-cp311-macosx_13_0_x86_64.whl", hash = "sha256:2514d61f24c4e0bb9913e2c51487ecdaeca5f8748d8313c933693416ca41d4d5"},
     {file = "pyproj-3.7.2-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:8693ca3892d82e70de077701ee76dd13d7bca4ae1c9d1e739d72004df015923a"},
@@ -4492,6 +4565,36 @@ type = "git"
 url = "https://github.com/tomsail/pytides.git"
 reference = "HEAD"
 resolved_reference = "2f73a88760e04f74db34bb455a238cd304bb719c"
+
+[[package]]
+name = "pytmd"
+version = "3.0.8"
+description = "Python-based tidal prediction software for estimating ocean, load, solid Earth and pole tides"
+optional = false
+python-versions = "~=3.9"
+groups = ["main"]
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
+files = [
+    {file = "pytmd-3.0.8-py3-none-any.whl", hash = "sha256:f4941dbcbd6b6f691fdb56f7e2d73a6a15cb1ff21e1553c634cf43adf8e2005f"},
+    {file = "pytmd-3.0.8.tar.gz", hash = "sha256:dcf01da0aa6e9c3ca4595e011704d57c44ae638648f51fb82a7c00d10eb30d93"},
+]
+
+[package.dependencies]
+h5netcdf = "*"
+lxml = "*"
+numpy = "*"
+pint = "*"
+platformdirs = "*"
+pyproj = ">=2.5.0"
+scipy = ">=1.10.1"
+timescale = ">=0.1.1"
+xarray = "*"
+
+[package.extras]
+all = ["cartopy", "ipyleaflet", "ipywidgets", "jplephem", "jupyterlab", "matplotlib", "notebook", "pandas"]
+aws = ["dask", "obstore", "pandas", "pyarrow", "s3fs", "zarr (>=3)"]
+dev = ["dask", "flake8", "gh", "oct2py", "pytest (>=4.6)", "pytest-cov", "pytest-xdist"]
+doc = ["docutils (>=0.17)", "graphviz", "ipympl", "myst-nb", "numpydoc", "sphinx", "sphinx-argparse (>=0.4)", "sphinx-design", "sphinx_rtd_theme", "sphinxcontrib-bibtex"]
 
 [[package]]
 name = "pyviz-comms"
@@ -4794,10 +4897,10 @@ tests = ["pytest", "pytest-cov"]
 name = "scipy"
 version = "1.17.1"
 description = "Fundamental algorithms for scientific computing in Python"
-optional = true
+optional = false
 python-versions = ">=3.11"
 groups = ["main"]
-markers = "(sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\") and (extra == \"image\" or extra == \"complete\" or extra == \"validate\")"
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
 files = [
     {file = "scipy-1.17.1-cp311-cp311-macosx_10_14_x86_64.whl", hash = "sha256:1f95b894f13729334fb990162e911c9e5dc1ab390c58aa6cbecb389c5b5e28ec"},
     {file = "scipy-1.17.1-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:e18f12c6b0bc5a592ed23d3f7b891f68fd7f8241d69b7883769eb5d5dfb52696"},
@@ -5086,6 +5189,29 @@ files = [
 [package.extras]
 doc = ["reno", "sphinx"]
 test = ["pytest", "tornado (>=4.5)", "typeguard"]
+
+[[package]]
+name = "timescale"
+version = "0.1.2"
+description = "Python tools for time and astronomical calculations"
+optional = false
+python-versions = "~=3.9"
+groups = ["main"]
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
+files = [
+    {file = "timescale-0.1.2-py3-none-any.whl", hash = "sha256:9c33911ef3027a741d57feeea63277bd6f8e692c6fdb9fef70b5cf4f50f4dd8a"},
+    {file = "timescale-0.1.2.tar.gz", hash = "sha256:1033b7cffff0010c04e88f1636e1f70388e80ac3cacead278ca8f2df190c42fe"},
+]
+
+[package.dependencies]
+lxml = "*"
+numpy = "*"
+python-dateutil = "*"
+scipy = ">=1.10.1"
+
+[package.extras]
+dev = ["flake8", "gh", "pytest (>=4.6)", "pytest-cov", "pytest-xdist"]
+doc = ["docutils", "graphviz", "myst-nb", "numpydoc", "sphinx", "sphinx-argparse (>=0.4)", "sphinx-design", "sphinx_rtd_theme", "sphinxcontrib-bibtex"]
 
 [[package]]
 name = "toolz"
@@ -5533,12 +5659,13 @@ files = [
 ]
 
 [extras]
-complete = ["colorcet", "dask", "datashader", "ioc-cleanup", "jinja2", "joblib", "matplotlib", "netcdf4", "netcdf4", "pandas", "pillow", "pyarrow", "pytides2", "searvey", "seastats"]
+complete = ["colorcet", "dask", "datashader", "ioc-cleanup", "jinja2", "joblib", "matplotlib", "netcdf4", "netcdf4", "pandas", "pillow", "pyarrow", "pytides2", "pytmd", "searvey", "seastats"]
 image = ["colorcet", "datashader", "pillow"]
 schism = ["dask", "netcdf4"]
+tide = ["pytmd"]
 validate = ["ioc-cleanup", "jinja2", "joblib", "matplotlib", "netcdf4", "pandas", "pyarrow", "pytides2", "searvey", "seastats"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<4.0"
-content-hash = "465fe3a81b282bada6f8bfa10b2467f92a4dc581f4abe2ee319c9537b63159e9"
+content-hash = "23b5f20aafc5d28b8cdcde13812d53f8dc5c27499f5cda943c7d2da03ceca2de"

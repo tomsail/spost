@@ -15,7 +15,8 @@ dependencies = [
     "cyclopts",
     "dask",
     "shapely",
-    "numpy-indexed"
+    "numpy-indexed",
+    "pytmd"
 ]
 
 
@@ -39,7 +40,8 @@ complete = [
     "pandas",
     "netcdf4",
     "pytides2 @ git+https://github.com/tomsail/pytides.git",
-    "ioc-cleanup @ git+https://github.com/tomsail/ioc_cleanup.git"
+    "ioc-cleanup @ git+https://github.com/tomsail/ioc_cleanup.git",
+    "pytmd"
 ]
 schism = ["netcdf4", "dask"]
 validate = [
@@ -54,6 +56,7 @@ validate = [
     "pytides2 @ git+https://github.com/tomsail/pytides.git",
     "ioc-cleanup @ git+https://github.com/tomsail/ioc_cleanup.git",
 ]
+tide = ["pytmd"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

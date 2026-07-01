@@ -8,8 +8,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from pytides2.tide import Tide
-from tqdm.auto import tqdm
-
 
 FULL = [
     "M2", "S2", "N2", "K2", "2N2", "L2", "T2", "R2", "NU2", "MU2", "EPS2", "LAMBDA2",  # Semi-diurnal (twice daily)
@@ -17,7 +15,6 @@ FULL = [
     "MF", "MM", "MSF", "SA", "SSA", "MSQM", "MTM",  # Long period (fortnightly to annual)
     "M4", "MS4", "M6", "MN4", "N4", "S4", "M8", "M3", "MKS2",  # Short period (higher harmonics)
 ]
-METRICS = ["amplitude", "phase"]
 
 
 def open_schism_output(
@@ -91,13 +88,15 @@ def open_zarr_store(store_path: pathlib.Path) -> xr.Dataset:
 
 def pytides_to_df(pytides_tide: Tide) -> pd.DataFrame:
     constituent_names = [c.name.upper() for c in pytides_tide.model["constituent"]]
-    return pd.DataFrame(pytides_tide.model, index=constituent_names).drop(
+    df = pd.DataFrame(pytides_tide.model, index=constituent_names).drop(
         "constituent",
         axis=1,
     )
+    df["z"] = df["amplitude"] * np.exp(1j*np.deg2rad(df["phase"]))
+    return df[["z"]]
 
 
-def pytide_get_coefs(ts: pd.Series, resample: int = None) -> dict:
+def pytides_get_coefs(ts: pd.Series, resample: int = None) -> dict:
     if resample is not None:
         ts = ts.resample(f"{resample}min").mean()
         ts = ts.shift(freq=f"{resample / 2}min")  # Center the resampled points
@@ -105,32 +104,18 @@ def pytide_get_coefs(ts: pd.Series, resample: int = None) -> dict:
     return Tide.decompose(ts.values, ts.index.to_pydatetime())[0]
 
 
-def reduce_coef_to_fes(df: pd.DataFrame, cnst: list, verbose: bool = False):
-    res = pd.DataFrame(0.0, index=cnst, columns=df.columns)
+def keep_common_consituents(df: pd.DataFrame, cnst: list) -> pd.DataFrame:
+    res = pd.DataFrame(0.0 + 0.0j, index=cnst, columns=df.columns)
     common_constituents = df.index.intersection(cnst)
     res.loc[common_constituents] = df.loc[common_constituents]
-
-    not_in_fes_df = df[~df.index.isin(cnst)]
-    not_in_fes = not_in_fes_df.index.tolist()
-    not_in_fes_amps = not_in_fes_df["amplitude"].round(3).tolist()
-    missing_fes = set(cnst) - set(df.index)
-
-    if verbose:
-        print(f"Constituents found but not in FES: {not_in_fes}")
-        print(f"Their amplitudes: {not_in_fes_amps}")
-        if missing_fes:
-            print(
-                f"FES constituents missing from analysis (set to 0): {sorted(missing_fes)}",
-            )
-
     return res
 
 
 def analyze_node(ts_np: np.ndarray, time_index: pd.DatetimeIndex) -> np.ndarray:
     ts = pd.Series(ts_np, index=time_index, name="elev")
-    df = pytides_to_df(pytide_get_coefs(ts, 60))
-    df = reduce_coef_to_fes(df, cnst=FULL)
-    return df.to_numpy()
+    df = pytides_to_df(pytides_get_coefs(ts, 60))
+    df = keep_common_consituents(df, FULL)
+    return df["z"].to_numpy()
 
 
 def analyze_block(ds_block: xr.DataArray) -> np.ndarray:
@@ -138,9 +123,59 @@ def analyze_block(ds_block: xr.DataArray) -> np.ndarray:
     data = ds_block.values  # shape (Nt, Nblock_nodes)
     results = np.stack(
         [analyze_node(data[:, i], time_index) for i in range(data.shape[1])],
-        axis=0  # (Nblock_nodes, Nconstituents, Nmetrics)
+        axis=0  # (Nblock_nodes, Nconstituents)
     )
     return results
+
+
+def detect_tide_model(directory: pathlib.Path, candidates: list[str]):
+    import pyTMD
+
+    for name in candidates:
+        try:
+            m = pyTMD.io.model(directory).from_database(name)
+        except (FileNotFoundError, ValueError, KeyError):
+            continue
+        return name, m
+
+    raise FileNotFoundError(f"No known tide model found under {directory} (tried {candidates})")
+
+
+def interpolate_tide_model(
+    directory: pathlib.Path,
+    lons: np.ndarray,
+    lats: np.ndarray,
+    candidates: list[str],
+    constituents: list[str] = FULL,
+) -> tuple[str, np.ndarray]:
+    model_name, m = detect_tide_model(directory, candidates)
+    print(f"Detected {model_name}")
+    ds = m.open_dataset(group="z", use_default_units=True)
+
+    name_map = {c.upper(): c for c in ds.tmd.constituents}
+    available = [name_map[c] for c in constituents if c in name_map]
+    if not available:
+        raise ValueError(
+            f"None of the requested constituents {constituents} are available "
+            f"in tide model {model_name!r} (has {sorted(name_map)})"
+        )
+    ds = ds[available]
+
+    lon = np.asarray(lons, dtype=float)
+    if float(ds["x"].max()) > 180.0:
+        lon = np.where(lon < 0, lon + 360.0, lon)
+    lat = np.asarray(lats, dtype=float)
+
+    node_dim = "node"
+    interpolated = ds.interp(
+        x=xr.DataArray(lon, dims=node_dim),
+        y=xr.DataArray(lat, dims=node_dim),
+    )
+
+    result = np.full((len(lon), len(constituents)), np.nan + 0.0j, dtype=complex)
+    for c in available:
+        result[:, constituents.index(c.upper())] = interpolated[c].values
+    return model_name, result
 
 
 def detide(data_array: xr.DataArray, chunk_size: int = 50) -> np.ndarray:

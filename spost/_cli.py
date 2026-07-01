@@ -4,7 +4,7 @@ from typing import Annotated
 import cyclopts
 from cyclopts.types import ExistingDirectory
 from cyclopts.types import ExistingPath
-from cyclopts.types import ResolvedFile
+from cyclopts.types import ResolvedDirectory
 
 from spost._region import BboxArg
 from spost._region import resolve_region
@@ -291,8 +291,11 @@ def stations(
 def tide(
     *,
     input_path: ExistingPath,
-    output: ResolvedFile,
+    output: ResolvedDirectory,
     chunk_size: int = 100,
+    overwrite: Annotated[bool, cyclopts.Parameter(negative=())] = False,
+    fes: ExistingDirectory | None = None,
+    tpxo: ExistingDirectory | None = None,
 ):
     """
     Compute tidal constituent maps from SCHISM elevation output.
@@ -305,6 +308,16 @@ def tide(
         Output NetCDF file path for tidal coefficients.
     chunk_size : int
         Number of nodes per joblib chunk.
+    overwrite : bool
+        Overwrite existing output file if it exists.
+    fes
+        Root directory of a pyTMD-compatible FES model store. When given,
+        the newest auto-detected FES release under `rundir` is interpolated
+        onto the mesh nodes. Can be combined with --tpxo.
+    tpxo
+        Root directory of a pyTMD-compatible TPXO model store. When given,
+        the newest auto-detected TPXO release under `rundir` is interpolated
+        onto the mesh nodes. Can be combined with --fes.
     """
     from spost._tide import compute_tidemap
 
@@ -312,4 +325,7 @@ def tide(
         input_path=input_path,
         output=output,
         chunk_size=chunk_size,
+        overwrite=overwrite,
+        fes=fes,
+        tpxo=tpxo,
     )
