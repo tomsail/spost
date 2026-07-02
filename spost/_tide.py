@@ -40,8 +40,7 @@ def compute_tidemap(
     os.environ['OPENBLAS_NUM_THREADS'] = '1'
     os.environ['NUMEXPR_NUM_THREADS'] = '1'
 
-    import zarr
-
+    import numpy as np
     import xarray as xr
 
     from ._utils import detide
@@ -49,7 +48,6 @@ def compute_tidemap(
     from ._utils import interpolate_tide_model
 
     from ._to_zarr import get_compressor
-    from ._to_zarr import sanitize_attrs
 
     # newest-to-oldest
     FES_MODEL_CANDIDATES = [
@@ -82,7 +80,7 @@ def compute_tidemap(
 
     coords = {
         "nSCHISM_hgrid_node": data.nSCHISM_hgrid_node,
-        "constituent": FULL,
+        "constituent": np.array(FULL, dtype=object),
         "lon": data.SCHISM_hgrid_node_x,
         "lat": data.SCHISM_hgrid_node_y,
     }
@@ -97,44 +95,49 @@ def compute_tidemap(
     # Add FES or TPXO
     lons = data.SCHISM_hgrid_node_x.values
     lats = data.SCHISM_hgrid_node_y.values
-    for directory, candidates, var_name in (
-        (fes, FES_MODEL_CANDIDATES, "fes"),
-        (tpxo, TPXO_MODEL_CANDIDATES, "tpxo"),
+
+    tidal_models = []
+    for directory, candidates in (
+        (fes, FES_MODEL_CANDIDATES),
+        (tpxo, TPXO_MODEL_CANDIDATES),
     ):
         if directory is None:
             continue
         print(f"Detecting tide model under {directory} ...")
         model_name, model_result = interpolate_tide_model(directory, lons, lats, candidates, constituents=FULL)
         print(f"Tide interpolated onto mesh nodes.")
-        coef_ds[var_name] = xr.DataArray(
+        coef_ds[model_name] = xr.DataArray(
             model_result,
             dims=("nSCHISM_hgrid_node", "constituent"),
             coords=coords,
-            attrs={f"{var_name} model": model_name},
         )
+        tidal_models.append(model_name)
 
-    # create zarr store
-    group = zarr.create_group(store=output, overwrite=overwrite, zarr_format=3)
-    for var in ["model", "fes", "tpxo"]:
-        if var not in coef_ds:
-            continue
-        da = coef_ds[var]
-        # initialize array
-        group.create_array(
-            name=var,
-            shape=da.shape,
-            dtype=da.dtype,
-            dimension_names=da.dims,
-            attributes=sanitize_attrs(da.attrs),
-            chunks=(NODE_CHUNK, len(da.constituent)),
-            shards=(NODE_SHARD, len(da.constituent)),
-            overwrite=True,
-            fill_value=None,
-            compressors=(get_compressor(CLEVEL),),
-        )
-        array = group[var]
-        n_nodes = da.shape[1]
-        node_chunk_ranges = [(i, min(i + NODE_CHUNK, n_nodes)) for i in range(0, n_nodes, NODE_CHUNK)]
-        # populate array
-        for node_start, node_end in node_chunk_ranges:
-            array[:, node_start:node_end] = data[:, node_start:node_end]
+    coef_vars = ["model", *tidal_models]
+    encoding = {
+        var: {
+            "compressors": (get_compressor(CLEVEL),),
+            "chunks": (NODE_CHUNK, coef_ds.sizes["constituent"]),
+            "shards": (NODE_SHARD, coef_ds.sizes["constituent"]),
+        }
+        for var in coef_vars
+    }
+
+    if "SCHISM_hgrid_face_nodes" in data:
+        faces = data["SCHISM_hgrid_face_nodes"]
+        coef_ds["SCHISM_hgrid_face_nodes"] = faces
+        coef_ds["SCHISM_hgrid_face_nodes"].encoding.clear()
+        n_faces = coef_ds.sizes[faces.dims[0]]
+        n_face_nodes = coef_ds.sizes[faces.dims[1]]
+        encoding["SCHISM_hgrid_face_nodes"] = {
+            "compressors": (get_compressor(CLEVEL),),
+            "chunks": (min(NODE_CHUNK, n_faces) or 1, n_face_nodes),
+        }
+
+    coef_ds.to_zarr(
+        output,
+        mode="w",
+        zarr_format=3,
+        encoding=encoding,
+        consolidated=True,
+    )
