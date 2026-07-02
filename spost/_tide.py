@@ -67,8 +67,8 @@ def compute_tidemap(
         "TPXO8-atlas-nc", "TPXO8-atlas",
         "TPXO7.2",
     ]
-    NODE_CHUNK = 1000
-    NODE_SHARD = 1000000
+    NODE_CHUNK = 1_000
+    NODE_SHARD = 10_000_000
     CLEVEL = 3
 
     if os.path.exists(output) and not overwrite:
@@ -113,12 +113,13 @@ def compute_tidemap(
             attrs={f"{var_name} model": model_name},
         )
 
-    # export
+    # create zarr store
     group = zarr.create_group(store=output, overwrite=overwrite, zarr_format=3)
     for var in ["model", "fes", "tpxo"]:
         if var not in coef_ds:
             continue
         da = coef_ds[var]
+        # initialize array
         group.create_array(
             name=var,
             shape=da.shape,
@@ -131,3 +132,9 @@ def compute_tidemap(
             fill_value=None,
             compressors=(get_compressor(CLEVEL),),
         )
+        array = group[var]
+        n_nodes = da.shape[1]
+        node_chunk_ranges = [(i, min(i + NODE_CHUNK, n_nodes)) for i in range(0, n_nodes, NODE_CHUNK)]
+        # populate array
+        for node_start, node_end in node_chunk_ranges:
+            array[:, node_start:node_end] = data[:, node_start:node_end]
