@@ -23,6 +23,7 @@ def open_schism_output(
     exclude_last: int = 0,
 ) -> xr.Dataset:
     files = natsort.natsorted(base_path.glob(f"**/{pattern}"))
+
     if not files:
         raise FileNotFoundError(f"No files matching '{pattern}' found in {base_path}")
     if exclude_last:

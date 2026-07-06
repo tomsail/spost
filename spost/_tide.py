@@ -124,15 +124,7 @@ def compute_tidemap(
     }
 
     if "SCHISM_hgrid_face_nodes" in data:
-        faces = data["SCHISM_hgrid_face_nodes"]
-        coef_ds["SCHISM_hgrid_face_nodes"] = faces
-        coef_ds["SCHISM_hgrid_face_nodes"].encoding.clear()
-        n_faces = coef_ds.sizes[faces.dims[0]]
-        n_face_nodes = coef_ds.sizes[faces.dims[1]]
-        encoding["SCHISM_hgrid_face_nodes"] = {
-            "compressors": (get_compressor(CLEVEL),),
-            "chunks": (min(NODE_CHUNK, n_faces) or 1, n_face_nodes),
-        }
+        coef_ds["SCHISM_hgrid_face_nodes"] = data["SCHISM_hgrid_face_nodes"]
 
     coef_ds.to_zarr(
         output,

@@ -148,7 +148,7 @@ def populate_array(
     nc_variable: str,
     zarr_variable: str,
     pattern: str,
-    node_chunk: int = 500,
+    node_shard: int = 50000,
     workers: int = 12,
     exclude_last: int = 0,
 ):
@@ -160,12 +160,14 @@ def populate_array(
     # Load entire array into memory once to avoid pickle/serialization issues
     data = da.values
     n_nodes = data.shape[1]
-    node_chunk_ranges = [(i, min(i + node_chunk, n_nodes)) for i in range(0, n_nodes, node_chunk)]
+    # Partition writes by shard, not chunk: a sub-shard write is a read-modify-write
+    # of the whole shard, so concurrent writers sharing a shard clobber each other.
+    node_shard_ranges = [(i, min(i + node_shard, n_nodes)) for i in range(0, n_nodes, node_shard)]
     _ = mf.multithread(
         func=functools.partial(process_spatial_chunk, store_path=store_path, zarr_variable=zarr_variable, data=data),
         func_kwargs=[
             dict(node_start=ss, node_end=ee)
-            for ss, ee in node_chunk_ranges
+            for ss, ee in node_shard_ranges
         ],
         max_workers=workers,
         include_kwargs=False,
@@ -204,7 +206,7 @@ def to_zarr(
         populate_array(
             base_path,
             store_path,
-            node_chunk=node_chunk,
+            node_shard=node_shard,
             workers=workers,
             exclude_last=exclude_last,
             **spec,
