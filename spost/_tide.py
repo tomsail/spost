@@ -43,7 +43,7 @@ def compute_tidemap(
     import numpy as np
     import xarray as xr
 
-    from ._utils import detide
+    from ._utils import harmonic_analysis
     from ._utils import FULL
     from ._utils import interpolate_tide_model
 
@@ -75,14 +75,17 @@ def compute_tidemap(
     data = xr.open_zarr(input_path)
     S = data['elevation']
 
-    # Multithreaded part
-    result = detide(S, chunk_size=chunk_size)
+    # Multiprocessing part
+    result = harmonic_analysis(S, chunk_size=chunk_size)
+
+    lons = data.SCHISM_hgrid_node_x.values
+    lats = data.SCHISM_hgrid_node_y.values
 
     coords = {
         "nSCHISM_hgrid_node": data.nSCHISM_hgrid_node,
         "constituent": np.array(FULL, dtype=object),
-        "lon": data.SCHISM_hgrid_node_x,
-        "lat": data.SCHISM_hgrid_node_y,
+        "SCHISM_hgrid_node_x": lons,
+        "SCHISM_hgrid_node_y": lats,
     }
     coef_da = xr.DataArray(
         result,
@@ -93,9 +96,6 @@ def compute_tidemap(
     coef_ds = coef_da.to_dataset()
 
     # Add FES or TPXO
-    lons = data.SCHISM_hgrid_node_x.values
-    lats = data.SCHISM_hgrid_node_y.values
-
     tidal_models = []
     for directory, candidates in (
         (fes, FES_MODEL_CANDIDATES),

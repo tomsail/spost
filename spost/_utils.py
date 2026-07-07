@@ -119,14 +119,14 @@ def analyze_node(ts_np: np.ndarray, time_index: pd.DatetimeIndex) -> np.ndarray:
     return df["z"].to_numpy()
 
 
-def analyze_block(ds_block: xr.DataArray) -> np.ndarray:
+def analyze_block(ds_block: xr.DataArray, start: int) -> tuple[int, np.ndarray]:
     time_index = pd.DatetimeIndex(ds_block["time"].values)
     data = ds_block.values  # shape (Nt, Nblock_nodes)
     results = np.stack(
         [analyze_node(data[:, i], time_index) for i in range(data.shape[1])],
         axis=0  # (Nblock_nodes, Nconstituents)
     )
-    return results
+    return start, results
 
 
 def detect_tide_model(directory: pathlib.Path, candidates: list[str]):
@@ -179,14 +179,15 @@ def interpolate_tide_model(
     return model_name, result
 
 
-def detide(data_array: xr.DataArray, chunk_size: int = 50) -> np.ndarray:
+def harmonic_analysis(data_array: xr.DataArray, chunk_size: int = 50) -> np.ndarray:
     n_nodes = data_array.sizes['nSCHISM_hgrid_node']
     chunks = []
     for i in range(0, n_nodes, chunk_size):
         end_idx = min(i + chunk_size, n_nodes)
-        chunk = {"ds_block": data_array.isel(nSCHISM_hgrid_node=slice(i, end_idx))}
+        chunk = {"ds_block": data_array.isel(nSCHISM_hgrid_node=slice(i, end_idx)), "start": i}
         chunks.append(chunk)
-    future_results = multifutures.multiprocess(analyze_block, chunks)
-    results = [fr.result for fr in future_results if fr.exception is None]
-    final_result = np.concatenate(results, axis=0)
+    future_results = multifutures.multiprocess(analyze_block, chunks, check=True, include_kwargs=False)
+    # multiprocess returns blocks in completion order, not submission order
+    blocks = sorted((fr.result for fr in future_results), key=lambda block: block[0])
+    final_result = np.concatenate([result for _, result in blocks], axis=0)
     return final_result
