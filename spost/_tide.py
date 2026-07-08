@@ -84,8 +84,8 @@ def compute_tidemap(
     coords = {
         "nSCHISM_hgrid_node": data.nSCHISM_hgrid_node,
         "constituent": np.array(FULL, dtype=object),
-        "SCHISM_hgrid_node_x": lons,
-        "SCHISM_hgrid_node_y": lats,
+        "SCHISM_hgrid_node_x": ("nSCHISM_hgrid_node", lons),
+        "SCHISM_hgrid_node_y": ("nSCHISM_hgrid_node", lats),
     }
     coef_da = xr.DataArray(
         result,
