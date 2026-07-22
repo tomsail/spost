@@ -329,3 +329,48 @@ def tide(
         fes=fes,
         tpxo=tpxo,
     )
+
+
+def sal(
+    *,
+    input_path: ExistingPath,
+    fes: ExistingDirectory,
+    output_dir: ResolvedDirectory = pathlib.Path("."),
+    constituents: Annotated[
+        list[str], cyclopts.Parameter(consume_multiple=True, negative=())
+    ] = [],
+    overwrite: Annotated[bool, cyclopts.Parameter(negative=())] = False,
+):
+    """
+    Generate SCHISM self-attraction & loading (SAL) gr3 files from FES load tide.
+
+    Writes one ``loadtide_<C>.gr3`` per constituent, where each node line holds
+    the load-tide amplitude (metres) and Greenwich phase (degrees), interpolated
+    from the FES ``load_tide`` atlas onto the mesh nodes (via pyTMD). The mesh is
+    read from the SCHISM zarr store (same source as ``tide``).
+
+    Parameters
+    ----------
+    input_path
+        Path to a SCHISM zarr store (with SCHISM_hgrid_node_x/y and
+        SCHISM_hgrid_face_nodes).
+    fes
+        Directory containing FES ``load_tide`` netCDF files
+        (e.g. ``m2_fes2022.nc``, ``s2_fes2022.nc`` ...).
+    output_dir
+        Directory for the generated ``loadtide_<C>.gr3`` files.
+    constituents
+        Constituents to export. Defaults to the 8 major SAL constituents
+        (M2, S2, K2, N2, O1, P1, Q1, K1).
+    overwrite
+        Overwrite existing gr3 files.
+    """
+    from spost._tide import compute_sal
+
+    compute_sal(
+        input_path=input_path,
+        fes=fes,
+        output_dir=output_dir,
+        constituents=constituents or None,
+        overwrite=overwrite,
+    )

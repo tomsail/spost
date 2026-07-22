@@ -5,6 +5,7 @@ from cyclopts import Group
 from cyclopts.types import ResolvedExistingFile
 
 from ._cli import clip
+from ._cli import sal
 from ._cli import stations
 from ._cli import tide
 from ._cli import to_mp4
@@ -54,6 +55,7 @@ _ = extract_app.command(to_zarr, group=convert_group)
 _ = extract_app.command(stations, group=extract1D_group)
 _ = extract_app.command(clip, group=extract2D_group)
 _ = extract_app.command(tide, group=extract2D_group)
+_ = extract_app.command(sal, group=extract2D_group)
 _ = plot_app.command(to_pngs, group=render_group)
 _ = plot_app.command(to_mp4, group=render_group)
 _ = skill_app.command(compare, group=station_group)

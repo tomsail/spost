@@ -133,3 +133,91 @@ def compute_tidemap(
         encoding=encoding,
         consolidated=True,
     )
+
+
+def compute_sal(
+    *,
+    input_path: pathlib.Path,
+    fes: pathlib.Path,
+    output_dir: pathlib.Path = pathlib.Path("."),
+    constituents: list[str] | None = None,
+    overwrite: bool = False,
+):
+    """Generate SCHISM self-attraction & loading (SAL) gr3 files from FES load tide.
+
+    The mesh (node coordinates and triangular connectivity) is read from the
+    same SCHISM zarr store used by ``compute_tidemap`` (``SCHISM_hgrid_node_x/y``
+    and ``SCHISM_hgrid_face_nodes``), so no separate ``hgrid.gr3`` parsing is
+    needed. Writes one ``loadtide_<C>.gr3`` per constituent, each node line
+    holding the load-tide amplitude (metres) and Greenwich phase (degrees).
+    """
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+
+    import numpy as np
+    import xarray as xr
+
+    from ._utils import build_faces
+    from ._utils import interpolate_load_tide
+    from ._utils import SAL
+
+    constituents = list(constituents) if constituents else list(SAL)
+
+    input_path = pathlib.Path(input_path)
+    fes = pathlib.Path(fes)
+    output_dir = pathlib.Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Fail early if any output exists and we are not overwriting.
+    if not overwrite:
+        existing = [output_dir / f"loadtide_{c}.gr3" for c in constituents]
+        clash = [p for p in existing if p.exists()]
+        if clash:
+            raise ValueError(
+                f"Output file(s) already exist: {[str(p) for p in clash]}. "
+                "Pass overwrite=True (or --overwrite) to replace them."
+            )
+
+    data = xr.open_zarr(input_path)
+    if "SCHISM_hgrid_face_nodes" not in data:
+        raise ValueError(
+            f"{input_path} has no 'SCHISM_hgrid_face_nodes'; cannot write mesh "
+            "connectivity for the gr3 files."
+        )
+    x = data.SCHISM_hgrid_node_x.values
+    y = data.SCHISM_hgrid_node_y.values
+    elements = build_faces(data)  # (ne, 3), 0-based
+    nn, ne = len(x), elements.shape[0]
+
+    print(f"Reading FES load tide for {constituents} from {fes} ...")
+    z = interpolate_load_tide(fes, x, y, constituents)  # (nn, nc) complex, metres
+
+    # pyTMD FES convention: z = A * exp(-i * G) -> A = |z|, G = -arg(z)
+    amp = np.abs(z)
+    phase = np.rad2deg(-np.angle(z)) % 360.0
+
+    # Nodes outside the FES domain -> no load contribution.
+    nan_mask = np.isnan(z)
+    print("number of NaNs",nan_mask.sum())
+    amp[nan_mask] = 0.0
+    phase[nan_mask] = 0.0
+    n_filled = int(nan_mask.any(axis=1).sum())
+    if n_filled:
+        print(f"Filled {n_filled}/{nn} nodes outside FES coverage with amplitude 0.")
+
+    written = []
+    for ic, c in enumerate(constituents):
+        outname = output_dir / f"loadtide_{c}.gr3"
+        with outname.open("w") as f:
+            f.write(f"{c.lower()}\n")
+            f.write(f"{ne} {nn}\n")
+            for i in range(nn):
+                f.write(
+                    f"{i + 1} {x[i]:.6f} {y[i]:.6f} {amp[i, ic]:.6f} {phase[i, ic]:.6f}\n"
+                )
+            for j in range(ne):
+                n1, n2, n3 = (elements[j] + 1)
+                f.write(f"{j + 1} 3 {n1} {n2} {n3}\n")
+        written.append(outname)
+        print(f"Written {outname}")
+
+    return written

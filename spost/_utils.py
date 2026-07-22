@@ -7,7 +7,6 @@ import natsort
 import numpy as np
 import pandas as pd
 import xarray as xr
-from pytides2.tide import Tide
 
 FULL = [
     "M2", "S2", "N2", "K2", "2N2", "L2", "T2", "R2", "NU2", "MU2", "EPS2", "LAMBDA2",  # Semi-diurnal (twice daily)
@@ -15,6 +14,7 @@ FULL = [
     "MF", "MM", "MSF", "SA", "SSA", "MSQM", "MTM",  # Long period (fortnightly to annual)
     "M4", "MS4", "M6", "MN4", "N4", "S4", "M8", "M3", "MKS2",  # Short period (higher harmonics)
 ]
+SAL = ["M2", "S2", "K2", "N2", "O1", "P1", "Q1", "K1"]
 
 
 def open_schism_output(
@@ -62,10 +62,21 @@ def is_overlapping(tris, meshx):
     return np.logical_or(abs(x2 - x1) > PIR, abs(x3 - x1) > PIR, abs(x3 - x3) > PIR)
 
 
+def build_faces(ds: xr.Dataset) -> np.ndarray:
+    """Full triangle connectivity (0-based) from a SCHISM mesh.
+
+    Returns the complete ``(ne, 3)`` node-index array with no filtering, so it
+    is safe for writing mesh files. Use :func:`build_simplices` instead for
+    datashader rendering, which additionally drops dateline-crossing elements.
+    """
+    faces = ds["SCHISM_hgrid_face_nodes"].values[:, :3]
+    return faces.astype("int64") - 1
+
+
 def build_simplices(ds: xr.Dataset) -> pd.DataFrame:
     """Extract triangle simplices from SCHISM mesh for datashader rendering."""
-    faces = ds["SCHISM_hgrid_face_nodes"].values.astype("int64") - 1
-    faces = faces[:, :3][~is_overlapping(faces[:, :3], ds["SCHISM_hgrid_node_x"].values)]
+    faces = build_faces(ds)
+    faces = faces[~is_overlapping(faces, ds["SCHISM_hgrid_node_x"].values)]
     return pd.DataFrame(faces, columns=["v0", "v1", "v2"])
 
 
@@ -87,17 +98,19 @@ def open_zarr_store(store_path: pathlib.Path) -> xr.Dataset:
     return xr.open_zarr(store_path, chunks={})
 
 
-def pytides_to_df(pytides_tide: Tide) -> pd.DataFrame:
+def pytides_to_df(pytides_tide) -> pd.DataFrame:
     constituent_names = [c.name.upper() for c in pytides_tide.model["constituent"]]
     df = pd.DataFrame(pytides_tide.model, index=constituent_names).drop(
         "constituent",
         axis=1,
     )
-    df["z"] = df["amplitude"] * np.exp(1j*np.deg2rad(df["phase"]))
+    df["z"] = df["amplitude"] * np.exp(-1j*np.deg2rad(df["phase"]))
     return df[["z"]]
 
 
 def pytides_get_coefs(ts: pd.Series, resample: int = None) -> dict:
+    from pytides2.tide import Tide
+
     if resample is not None:
         ts = ts.resample(f"{resample}min").mean()
         ts = ts.shift(freq=f"{resample / 2}min")  # Center the resampled points
@@ -174,8 +187,9 @@ def interpolate_tide_model(
     )
 
     result = np.full((len(lon), len(constituents)), np.nan + 0.0j, dtype=complex)
+    col = {str(c).upper(): i for i, c in enumerate(constituents)}
     for c in available:
-        result[:, constituents.index(c.upper())] = interpolated[c].values
+        result[:, col[c.upper()]] = interpolated[c].values
     return model_name, result
 
 
@@ -191,3 +205,51 @@ def harmonic_analysis(data_array: xr.DataArray, chunk_size: int = 50) -> np.ndar
     blocks = sorted((fr.result for fr in future_results), key=lambda block: block[0])
     final_result = np.concatenate([result for _, result in blocks], axis=0)
     return final_result
+
+
+def interpolate_load_tide(
+    directory: pathlib.Path,
+    lons: np.ndarray,
+    lats: np.ndarray,
+    constituents: list[str],
+) -> np.ndarray:
+    from pyTMD.io import FES
+
+    directory = pathlib.Path(directory)
+    file_map: dict[str, pathlib.Path] = {}
+    for f in sorted(directory.glob("*.nc")):
+        cname = f.stem.split("_")[0].upper()
+        file_map.setdefault(cname, f)
+
+    lon = np.asarray(lons, dtype=float)
+    lat = np.asarray(lats, dtype=float)
+    result = np.full((len(lon), len(constituents)), np.nan + 0.0j, dtype=complex)
+    col = {str(c).upper(): i for i, c in enumerate(constituents)}
+
+    missing = []
+    for c in constituents:
+        cu = str(c).upper()
+        f = file_map.get(cu)
+        if f is None:
+            missing.append(c)
+            continue
+        ds = FES.open_fes_dataset(f, format="netcdf", group="z")
+        var = next(iter(ds.data_vars))
+        da = ds[var]
+        units = str(da.attrs.get("units", "")).lower()
+        if units in ("cm", "centimeter", "centimeters"):
+            da = da / 100.0
+        elif units in ("mm", "millimeter", "millimeters"):
+            da = da / 1000.0
+        qlon = lon.copy()
+        if float(da["x"].max()) > 180.0:
+            qlon = np.where(qlon < 0, qlon + 360.0, qlon)
+        interp = da.interp(
+            x=xr.DataArray(qlon, dims="node"),
+            y=xr.DataArray(lat, dims="node"),
+        )
+        result[:, col[cu]] = interp.values
+
+    if missing:
+        print(f"WARNING: no FES load-tide file found for constituents: {missing}")
+    return result
