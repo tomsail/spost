@@ -193,7 +193,7 @@ def compute_sal(
 
     # pyTMD FES convention: z = A * exp(-i * G) -> A = |z|, G = -arg(z)
     amp = np.abs(z)
-    phase = np.rad2deg(-np.angle(z)) % 360.0
+    phase = np.angle(z,deg=True) % 360.0
 
     # Nodes outside the FES domain -> no load contribution.
     nan_mask = np.isnan(z)
