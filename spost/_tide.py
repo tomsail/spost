@@ -8,30 +8,32 @@ def compute_tidemap(
     output: pathlib.Path,
     chunk_size: int = 100,
     overwrite: bool = False,
-    fes: pathlib.Path | None = None,
-    tpxo: pathlib.Path | None = None,
+    tide_dir: pathlib.Path | None = None,
+    models: list[str] | None = None,
 ):
     """
     Compute tidal constituent maps from SCHISM elevation output.
 
     Parameters
     ----------
-    rundir : Path
-        Directory containing SCHISM run output (searches for date subdirs).
+    input_path : Path
+        Path to the SCHISM zarr store (with elevation + mesh coordinates).
     output : Path
-        Output NetCDF file path for tidal coefficients.
+        Output zarr store path for tidal coefficients.
     chunk_size : int
         Number of nodes per joblib chunk.
     overwrite : bool
-        Overwrite existing output file if it exists.
-    fes : Path, optional
-        Root directory of a pyTMD-compatible FES model store. When given,
-        the newest auto-detected FES release under `rundir` is interpolated
-        onto the mesh nodes
-    tpxo : Path, optional
-        Root directory of a pyTMD-compatible TPXO model store. When given,
-        the newest auto-detected TPXO release under `rundir` is interpolated
-        onto the mesh nodes
+        Overwrite existing output store if it exists.
+    tide_dir : Path, optional
+        Root directory of a pyTMD-style tide model store (the directory that
+        holds the per-model sub-directories, e.g. ``fes2014/``, ``fes2022b/``,
+        ``TPXO10_atlas_v2/`` ...). Combined with ``models``, each requested
+        model is interpolated onto the mesh nodes and written as its own
+        variable.
+    models : list[str], optional
+        pyTMD database model names to interpolate from ``tide_dir`` (e.g.
+        ``["FES2014", "FES2022_extrapolated", "TPXO10-atlas-v2-nc"]``). Each
+        one becomes a variable in the output store named after the model.
     """
 
     # CRITICAL: Set these BEFORE any numpy/scipy imports
@@ -49,22 +51,9 @@ def compute_tidemap(
 
     from ._to_zarr import get_compressor
 
-    # newest-to-oldest
-    FES_MODEL_CANDIDATES = [
-        "FES2022_extrapolated", "FES2022",
-        "FES2014_extrapolated", "FES2014",
-        "FES2012",
-    ]
-    TPXO_MODEL_CANDIDATES = [
-        "TPXO10-atlas-v2-nc", "TPXO10-atlas-v2",
-        "TPXO9-atlas-v5-nc", "TPXO9-atlas-v5",
-        "TPXO9-atlas-v4-nc", "TPXO9-atlas-v4",
-        "TPXO9-atlas-v3-nc", "TPXO9-atlas-v3",
-        "TPXO9-atlas-v2-nc", "TPXO9-atlas-v2",
-        "TPXO9-atlas-nc", "TPXO9-atlas",
-        "TPXO8-atlas-nc", "TPXO8-atlas",
-        "TPXO7.2",
-    ]
+    if len(models)==0:
+        raise ValueError("`models` were requested but no `tide_dir` was provided.")
+
     NODE_CHUNK = 1_000
     NODE_SHARD = 10_000_000
     CLEVEL = 3
@@ -95,23 +84,18 @@ def compute_tidemap(
     )
     coef_ds = coef_da.to_dataset()
 
-    # Add FES or TPXO
+    # Interpolate each requested reference tide model onto the mesh nodes.
     tidal_models = []
-    for directory, candidates in (
-        (fes, FES_MODEL_CANDIDATES),
-        (tpxo, TPXO_MODEL_CANDIDATES),
-    ):
-        if directory is None:
-            continue
-        print(f"Detecting tide model under {directory} ...")
-        model_name, model_result = interpolate_tide_model(directory, lons, lats, candidates, constituents=FULL)
-        print(f"Tide interpolated onto mesh nodes.")
-        coef_ds[model_name] = xr.DataArray(
+    for name in models:
+        print(f"Interpolating tide model {name!r} from {tide_dir} ...")
+        model_result = interpolate_tide_model(tide_dir, name, lons, lats, constituents=FULL)
+        print(f"  {name} interpolated onto mesh nodes.")
+        coef_ds[name] = xr.DataArray(
             model_result,
             dims=("nSCHISM_hgrid_node", "constituent"),
             coords=coords,
         )
-        tidal_models.append(model_name)
+        tidal_models.append(name)
 
     coef_vars = ["model", *tidal_models]
     encoding = {

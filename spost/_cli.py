@@ -292,10 +292,12 @@ def tide(
     *,
     input_path: ExistingPath,
     output: ResolvedDirectory,
+    tide_dir: ExistingDirectory,
+    models: Annotated[
+        list[str], cyclopts.Parameter(consume_multiple=True, negative=())
+    ],
     chunk_size: int = 100,
     overwrite: Annotated[bool, cyclopts.Parameter(negative=())] = False,
-    fes: ExistingDirectory | None = None,
-    tpxo: ExistingDirectory | None = None,
 ):
     """
     Compute tidal constituent maps from SCHISM elevation output.
@@ -305,19 +307,26 @@ def tide(
     input_path
         Path to the zarr store.
     output : Path
-        Output NetCDF file path for tidal coefficients.
+        Output zarr store path for tidal coefficients.
     chunk_size : int
         Number of nodes per joblib chunk.
     overwrite : bool
-        Overwrite existing output file if it exists.
-    fes
-        Root directory of a pyTMD-compatible FES model store. When given,
-        the newest auto-detected FES release under `rundir` is interpolated
-        onto the mesh nodes. Can be combined with --tpxo.
-    tpxo
-        Root directory of a pyTMD-compatible TPXO model store. When given,
-        the newest auto-detected TPXO release under `rundir` is interpolated
-        onto the mesh nodes. Can be combined with --fes.
+        Overwrite existing output store if it exists.
+    tide_dir
+        Root of the pyTMD-style model store, i.e. the parent of the per-model
+        sub-directories (``fes2014/``, ``fes2022b/``, ``TPXO10_atlas_v2/`` ...).
+    models
+        pyTMD database model names to interpolate onto the mesh (each becomes
+        its own output variable). pyTMD resolves the sub-directory layout under
+        --tide-dir, e.g.:
+          * FES2014               -> fes2014/ocean_tide
+          * FES2014_extrapolated  -> fes2014/ocean_tide_extrapolated
+          * FES2022               -> fes2022b/ocean_tide_20241025
+          * FES2022_extrapolated  -> fes2022b/ocean_tide_extrapolated
+          * TPXO10-atlas-v2-nc    -> TPXO10_atlas_v2
+
+        Example: ``--models FES2014 FES2022_extrapolated TPXO10-atlas-v2-nc``
+        Full list: https://pytmd.readthedocs.io/en/latest/getting_started/Getting-Started.html#directories
     """
     from spost._tide import compute_tidemap
 
@@ -326,8 +335,8 @@ def tide(
         output=output,
         chunk_size=chunk_size,
         overwrite=overwrite,
-        fes=fes,
-        tpxo=tpxo,
+        tide_dir=tide_dir,
+        models=models or None,
     )
 
 

@@ -155,15 +155,42 @@ def detect_tide_model(directory: pathlib.Path, candidates: list[str]):
     raise FileNotFoundError(f"No known tide model found under {directory} (tried {candidates})")
 
 
+def load_tide_model(directory: pathlib.Path, name: str):
+    """Load a single pyTMD tide model by its database ``name``.
+
+    ``directory`` is the root of a pyTMD-style store (the directory that holds
+    the per-model sub-directories, e.g. ``fes2014/``, ``fes2022b/``,
+    ``TPXO10_atlas_v2/`` ...). ``name`` must be a pyTMD database model name such
+    as ``FES2014``, ``FES2022_extrapolated`` or ``TPXO10-atlas-v2-nc``; pyTMD
+    resolves the expected sub-directory/file layout under ``directory`` for us.
+    """
+    import pyTMD
+
+    try:
+        return pyTMD.io.model(directory).from_database(name)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        raise FileNotFoundError(
+            f"Could not load tide model {name!r} under {directory}. "
+            "Check that the name is a valid pyTMD database model and that the "
+            "pyTMD-style sub-directories exist under that root."
+        ) from exc
+
+
 def interpolate_tide_model(
     directory: pathlib.Path,
+    name: str,
     lons: np.ndarray,
     lats: np.ndarray,
-    candidates: list[str],
     constituents: list[str] = FULL,
-) -> tuple[str, np.ndarray]:
-    model_name, m = detect_tide_model(directory, candidates)
-    print(f"Detected {model_name}")
+) -> np.ndarray:
+    """Interpolate a named pyTMD tide model onto ``(lons, lats)`` mesh nodes.
+
+    Returns a complex ``(n_nodes, n_constituents)`` array aligned with
+    ``constituents``; entries for constituents missing from the model are left
+    as ``nan``.
+    """
+    m = load_tide_model(directory, name)
+    model_name = name
     ds = m.open_dataset(group="z", use_default_units=True)
 
     name_map = {c.upper(): c for c in ds.tmd.constituents}
@@ -190,7 +217,7 @@ def interpolate_tide_model(
     col = {str(c).upper(): i for i, c in enumerate(constituents)}
     for c in available:
         result[:, col[c.upper()]] = interpolated[c].values
-    return model_name, result
+    return result
 
 
 def harmonic_analysis(data_array: xr.DataArray, chunk_size: int = 50) -> np.ndarray:
