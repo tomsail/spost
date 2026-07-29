@@ -109,6 +109,8 @@ def compute_tidemap(
 
     if "SCHISM_hgrid_face_nodes" in data:
         coef_ds["SCHISM_hgrid_face_nodes"] = data["SCHISM_hgrid_face_nodes"]
+    if "depth" in data:
+        coef_ds["depth"] = data["depth"]
 
     coef_ds.to_zarr(
         output,
