@@ -128,6 +128,7 @@ def compute_sal(
     output_dir: pathlib.Path = pathlib.Path("."),
     constituents: list[str] | None = None,
     overwrite: bool = False,
+    start_date: str | None = None,
 ):
     """Generate SCHISM self-attraction & loading (SAL) gr3 files from FES load tide.
 
@@ -135,7 +136,24 @@ def compute_sal(
     same SCHISM zarr store used by ``compute_tidemap`` (``SCHISM_hgrid_node_x/y``
     and ``SCHISM_hgrid_face_nodes``), so no separate ``hgrid.gr3`` parsing is
     needed. Writes one ``loadtide_<C>.gr3`` per constituent, each node line
-    holding the load-tide amplitude (metres) and Greenwich phase (degrees).
+    holding the load-tide amplitude (metres) and phase (degrees).
+
+    When ``start_date`` is provided, the tidal equilibrium argument (V₀+u,
+    also called "tear" in SCHISM) is pre-subtracted from the FES Greenwich
+    phase lags, so that SCHISM's runtime formula
+    ``cos(tfreq*t - phase_gr3)`` is physically consistent with the correct
+    ``cos(tfreq*t - ncyc*2π + tear - phase_greenwich)`` (see SCHISM issue #225).
+    Without this correction, raw Greenwich phases produce errors up to 360°
+    depending on the simulation start date.
+
+    Parameters
+    ----------
+    start_date : str, optional
+        Simulation start date as ISO-8601 string (e.g. "2020-01-01").
+        Used to compute the tidal equilibrium argument (tear) that gets
+        subtracted from the FES Greenwich phase lags. If omitted, the phases
+        are written as raw Greenwich phase lags (legacy behaviour, only correct
+        if t=0 coincides with the Greenwich transit epoch).
     """
     os.environ.setdefault("OMP_NUM_THREADS", "1")
 
@@ -180,6 +198,49 @@ def compute_sal(
     # pyTMD FES convention: z = A * exp(-i * G) -> A = |z|, G = -arg(z)
     amp = np.abs(z)
     phase = np.angle(z,deg=True) % 360.0
+
+    # Pre-subtract the tidal equilibrium argument (tear) from the FES Greenwich
+    # phase lags so that SCHISM's runtime load-tide formula is correct
+    # (see https://github.com/schism-dev/schism/issues/225).
+    #
+    # SCHISM currently evaluates the load-tide contribution as:
+    #   etp += A * cos(tfreq*t - phase_gr3)
+    #
+    # The physically correct expression (matching the tidal potential term) is:
+    #   etp += A * cos(tfreq*t - ncyc*2π + tear - phase_greenwich)
+    #
+    # Since ncyc*2π is a pure numerical trick (removes full cycles) and does not
+    # affect the physics, the correction reduces to writing:
+    #   phase_gr3 = phase_greenwich - tear(j)
+    #
+    # where tear(j) = V₀+u = equilibrium argument (degrees) at the simulation
+    # start date for constituent j.
+    if start_date is not None:
+        from datetime import datetime
+        from pyTMD.constituents import arguments as _tmd_arguments
+
+        dt0 = datetime.fromisoformat(start_date)
+        # Modified Julian Day: days since 1858-11-17
+        mjd = (dt0 - datetime(1858, 11, 17)).days + (
+            dt0.hour * 3600 + dt0.minute * 60 + dt0.second
+        ) / 86400.0
+        mjd_arr = np.array([mjd])
+        # pyTMD expects lowercase constituent names
+        c_lower = [c.lower() for c in constituents]
+        _pu, _pf, G = _tmd_arguments(mjd_arr, c_lower, corrections="FES")
+        # G shape: (1, n_constituents), in degrees
+        tear = G[0]  # 1-D array, one value per constituent (degrees)
+        print(f"Tidal equilibrium arguments (tear) at {start_date}:")
+        for ic, c in enumerate(constituents):
+            print(f"  {c:>4s}: {tear[ic]:+.4f}°")
+        # Subtract tear from the Greenwich phase for each constituent
+        phase = (phase - tear[np.newaxis, :]) % 360.0
+    else:
+        print(
+            "WARNING: no start_date provided; writing raw FES Greenwich phase lags.\n"
+            "         This is only correct if the model t=0 coincides with the\n"
+            "         Greenwich tidal epoch. For correct results, pass --start-date."
+        )
 
     # Nodes outside the FES domain -> no load contribution.
     nan_mask = np.isnan(z)

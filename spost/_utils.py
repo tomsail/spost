@@ -22,7 +22,11 @@ def open_schism_output(
     pattern: str,
     exclude_last: int = 0,
 ) -> xr.Dataset:
-    files = natsort.natsorted(base_path.glob(f"**/{pattern}"))
+    # NOTE: recurse_symlinks=True is required (Python 3.13+): SCHISM `outputs/`
+    # directories on HPC are commonly symlinks to scratch storage, and by
+    # default Path.glob("**/...") does NOT descend into symlinked directories,
+    # which would silently find zero files.
+    files = natsort.natsorted(base_path.glob(f"**/{pattern}", recurse_symlinks=True))
 
     if not files:
         raise FileNotFoundError(f"No files matching '{pattern}' found in {base_path}")

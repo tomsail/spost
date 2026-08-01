@@ -349,14 +349,20 @@ def sal(
         list[str], cyclopts.Parameter(consume_multiple=True, negative=())
     ] = [],
     overwrite: Annotated[bool, cyclopts.Parameter(negative=())] = False,
+    start_date: Annotated[str | None, cyclopts.Parameter()] = None,
 ):
     """
     Generate SCHISM self-attraction & loading (SAL) gr3 files from FES load tide.
 
     Writes one ``loadtide_<C>.gr3`` per constituent, where each node line holds
-    the load-tide amplitude (metres) and Greenwich phase (degrees), interpolated
-    from the FES ``load_tide`` atlas onto the mesh nodes (via pyTMD). The mesh is
-    read from the SCHISM zarr store (same source as ``tide``).
+    the load-tide amplitude (metres) and phase (degrees), interpolated from the
+    FES ``load_tide`` atlas onto the mesh nodes (via pyTMD). The mesh is read
+    from the SCHISM zarr store (same source as ``tide``).
+
+    The FES Greenwich phase lags are corrected by pre-subtracting the tidal
+    equilibrium argument (V₀+u, a.k.a. "tear" in SCHISM) at the simulation
+    start date, so that SCHISM's iloadtide=1 formula produces correct results
+    (see https://github.com/schism-dev/schism/issues/225).
 
     Parameters
     ----------
@@ -373,6 +379,10 @@ def sal(
         (M2, S2, K2, N2, O1, P1, Q1, K1).
     overwrite
         Overwrite existing gr3 files.
+    start_date
+        Simulation start date (ISO-8601, e.g. "2020-01-01"). Required for
+        correct phase adjustment. Without it, raw Greenwich phases are used
+        (legacy behaviour, only valid when t=0 coincides with the tidal epoch).
     """
     from spost._tide import compute_sal
 
@@ -382,4 +392,5 @@ def sal(
         output_dir=output_dir,
         constituents=constituents or None,
         overwrite=overwrite,
+        start_date=start_date,
     )
