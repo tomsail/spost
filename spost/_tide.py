@@ -196,7 +196,7 @@ def compute_sal(
     z = interpolate_load_tide(fes, x, y, constituents)  # (nn, nc) complex, metres
 
     # pyTMD FES convention: z = A * exp(-i * G) -> A = |z|, G = -arg(z)
-    amp = np.abs(z)
+    amp = np.abs(z) * 1.69   # The load combination is (1+k'-h')≈1.69
     phase = np.angle(z,deg=True) % 360.0
 
     # Pre-subtract the tidal equilibrium argument (tear) from the FES Greenwich
