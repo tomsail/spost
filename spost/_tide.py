@@ -195,52 +195,28 @@ def compute_sal(
     print(f"Reading FES load tide for {constituents} from {fes} ...")
     z = interpolate_load_tide(fes, x, y, constituents)  # (nn, nc) complex, metres
 
-    # pyTMD FES convention: z = A * exp(-i * G) -> A = |z|, G = -arg(z)
-    amp = np.abs(z) * 1.69   # The load combination is (1+k'-h')≈1.69
-    phase = np.angle(z,deg=True) % 360.0
+    # AVISO/FES "load tide" = crustal displacement (or UP) ≈ -0.591 * SAL.
+    # Convert to the SAL forcing field: z_SAL = ((1+k2'-h2')/h2') * z_UP = -1.69 * z_UP
+    # (rescale AND flip sign). Set INPUT_IS_DISPLACEMENT = False if you switch to a
+    # true SAL product (LEGOS LSA *_sal.nc, GOT4.10c grids_SAL) - then z is used as-is.
+    INPUT_IS_DISPLACEMENT = True
+    if INPUT_IS_DISPLACEMENT:
+        H2P, K2P = -1.001, -0.3075                  # load Love numbers (degree 2)
+        z = z * ((1.0 + K2P - H2P) / H2P)           # = -1.69 * z
 
-    # Pre-subtract the tidal equilibrium argument (tear) from the FES Greenwich
-    # phase lags so that SCHISM's runtime load-tide formula is correct
-    # (see https://github.com/schism-dev/schism/issues/225).
-    #
-    # SCHISM currently evaluates the load-tide contribution as:
-    #   etp += A * cos(tfreq*t - phase_gr3)
-    #
-    # The physically correct expression (matching the tidal potential term) is:
-    #   etp += A * cos(tfreq*t - ncyc*2π + tear - phase_greenwich)
-    #
-    # Since ncyc*2π is a pure numerical trick (removes full cycles) and does not
-    # affect the physics, the correction reduces to writing:
-    #   phase_gr3 = phase_greenwich - tear(j)
-    #
-    # where tear(j) = V₀+u = equilibrium argument (degrees) at the simulation
-    # start date for constituent j.
+    amp = np.abs(z)
+    phase = (-np.angle(z, deg=True)) % 360.0        # Greenwich lag G  (fixes B1)
+
     if start_date is not None:
         from datetime import datetime
         from pyTMD.constituents import arguments as _tmd_arguments
-
-        dt0 = datetime.fromisoformat(start_date)
-        # Modified Julian Day: days since 1858-11-17
-        mjd = (dt0 - datetime(1858, 11, 17)).days + (
-            dt0.hour * 3600 + dt0.minute * 60 + dt0.second
-        ) / 86400.0
-        mjd_arr = np.array([mjd])
-        # pyTMD expects lowercase constituent names
+        dt0 = datetime.fromisoformat(start_date)    # must equal param.nml start (UTC)
+        mjd = (dt0 - datetime(1858, 11, 17)).days + (dt0.hour*3600 + dt0.minute*60 + dt0.second)/86400.0
         c_lower = [c.lower() for c in constituents]
-        _pu, _pf, G = _tmd_arguments(mjd_arr, c_lower, corrections="FES")
-        # G shape: (1, n_constituents), in degrees
-        tear = G[0]  # 1-D array, one value per constituent (degrees)
-        print(f"Tidal equilibrium arguments (tear) at {start_date}:")
-        for ic, c in enumerate(constituents):
-            print(f"  {c:>4s}: {tear[ic]:+.4f}°")
-        # Subtract tear from the Greenwich phase for each constituent
+        pu, pf, G = _tmd_arguments(np.array([mjd]), c_lower, corrections="FES")
+        tear = (G[0] + np.degrees(pu[0])) % 360.0   # tear = V0 + u; pu is RADIANS (fixes B3)
         phase = (phase - tear[np.newaxis, :]) % 360.0
-    else:
-        print(
-            "WARNING: no start_date provided; writing raw FES Greenwich phase lags.\n"
-            "         This is only correct if the model t=0 coincides with the\n"
-            "         Greenwich tidal epoch. For correct results, pass --start-date."
-        )
+        amp = amp * pf[0][np.newaxis, :]            # nodal factor f(t0) (fixes B4)
 
     # Nodes outside the FES domain -> no load contribution.
     nan_mask = np.isnan(z)
