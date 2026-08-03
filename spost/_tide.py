@@ -205,7 +205,38 @@ def compute_sal(
         z = z * ((1.0 + K2P - H2P) / H2P)           # = -1.69 * z
 
     amp = np.abs(z)
-    phase = (-np.angle(z, deg=True)) % 360.0        # Greenwich lag G  (fixes B1)
+    phase = (-np.angle(z, deg=True)) % 360.0        # Greenwich phase lag G
+
+    # Convert Greenwich harmonic constants to SCHISM's iloadtide=1 convention.
+    #
+    # SCHISM evaluates the loading term (schism_step.F90) as
+    #     eta_load = A_gr3 * cos(omega*t - phi_gr3)                    (t = s since run start)
+    # WITHOUT re-applying the nodal factor (tnf) or equilibrium argument
+    # (tear) that it applies to the earth-tidal-potential term on the line
+    # just above. The physically correct FES load signal is
+    #     eta_load = f * A_fes * cos(omega*t + (V0+u) - G_lag)
+    # Matching the two at t=0 therefore requires us to bake both quantities
+    # into the .gr3 ourselves:
+    #     A_gr3   = f      * A_fes          (nodal factor at the run start)
+    #     phi_gr3 = G_lag  - (V0+u)         (subtract the equilibrium argument)
+    # (V0+u) and f are the same values SCHISM stores as tear/tnf; see
+    # https://github.com/schism-dev/schism/issues/225.
+    if start_date is not None:
+        from ._utils import tidal_arguments
+
+        vu, f = tidal_arguments(start_date, constituents)   # (nc,) deg, (nc,)
+        phase = (phase - vu[None, :]) % 360.0
+        amp = amp * f[None, :]
+        print(f"Applied equilibrium-argument (tear) correction at {start_date}:")
+        for ic, c in enumerate(constituents):
+            print(f"  {c:>4}: V0+u={vu[ic] % 360:7.2f} deg  f={f[ic]:.4f}")
+    else:
+        print(
+            "WARNING: no start_date given; writing RAW Greenwich phase lags. "
+            "These are only correct if the SCHISM run start (t=0) coincides "
+            "with the tidal epoch. Pass start_date to enable the tear "
+            "correction (see SCHISM issue #225)."
+        )
 
     # Nodes outside the FES domain -> no load contribution.
     nan_mask = np.isnan(z)

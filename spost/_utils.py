@@ -284,3 +284,58 @@ def interpolate_load_tide(
     if missing:
         print(f"WARNING: no FES load-tide file found for constituents: {missing}")
     return result
+
+
+def tidal_arguments(
+    start_date: str,
+    constituents: list[str],
+    corrections: str = "FES",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Equilibrium argument (V₀+u) and nodal factor f at a reference epoch.
+
+    Uses pyTMD's astronomical arguments so the result is consistent with the
+    convention used to synthesise FES/pyTMD harmonic constants, and with
+    SCHISM's own ``tear`` (V₀+u) and ``tnf`` (f) that it stores for the
+    earth-tidal-potential term.
+
+    pyTMD predicts a tide as ``f * A * cos(theta - G_lag)`` with
+    ``theta = radians(G) + u`` (see ``pyTMD.predict.time_series``), where
+    ``G`` is the astronomical argument and ``u`` the nodal angle. Hence the
+    full equilibrium argument returned here is ``(V₀+u) = G + degrees(u)``.
+
+    Parameters
+    ----------
+    start_date : str
+        Reference epoch (ISO-8601, e.g. ``"2020-01-01"`` or
+        ``"2020-01-01T00:00:00"``). For SCHISM this is the run start (t=0).
+    constituents : list[str]
+        Constituent names (case-insensitive, e.g. ``["M2", "S2", ...]``).
+    corrections : str, default "FES"
+        Nodal-correction convention passed to
+        :func:`pyTMD.constituents.arguments` (``"FES"``, ``"OTIS"`` or
+        ``"GOT"``). Use ``"FES"`` when the harmonic constants come from a FES
+        atlas.
+
+    Returns
+    -------
+    Vu : np.ndarray
+        Equilibrium argument ``V₀+u`` in **degrees**, shape ``(n_constituents,)``.
+    f : np.ndarray
+        Nodal modulation factor (dimensionless), shape ``(n_constituents,)``.
+    """
+    import datetime as _dt
+
+    import pyTMD.constituents
+    import timescale.time
+
+    dt = _dt.datetime.fromisoformat(str(start_date))
+    ts = timescale.time.Timescale().from_calendar(
+        dt.year, dt.month, dt.day, dt.hour, dt.minute,
+        dt.second + dt.microsecond / 1e6,
+    )
+    mjd = np.atleast_1d(ts.MJD)
+    cons = [str(c).lower() for c in constituents]
+    pu, pf, G = pyTMD.constituents.arguments(mjd, cons, corrections=corrections)
+    vu = (G[0] + np.degrees(pu[0]))  # V0 + u, degrees
+    f = pf[0]
+    return vu, f
