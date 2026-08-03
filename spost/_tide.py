@@ -207,17 +207,6 @@ def compute_sal(
     amp = np.abs(z)
     phase = (-np.angle(z, deg=True)) % 360.0        # Greenwich lag G  (fixes B1)
 
-    if start_date is not None:
-        from datetime import datetime
-        from pyTMD.constituents import arguments as _tmd_arguments
-        dt0 = datetime.fromisoformat(start_date)    # must equal param.nml start (UTC)
-        mjd = (dt0 - datetime(1858, 11, 17)).days + (dt0.hour*3600 + dt0.minute*60 + dt0.second)/86400.0
-        c_lower = [c.lower() for c in constituents]
-        pu, pf, G = _tmd_arguments(np.array([mjd]), c_lower, corrections="FES")
-        tear = (G[0] + np.degrees(pu[0])) % 360.0   # tear = V0 + u; pu is RADIANS (fixes B3)
-        phase = (phase - tear[np.newaxis, :]) % 360.0
-        amp = amp * pf[0][np.newaxis, :]            # nodal factor f(t0) (fixes B4)
-
     # Nodes outside the FES domain -> no load contribution.
     nan_mask = np.isnan(z)
     print("number of NaNs",nan_mask.sum())
