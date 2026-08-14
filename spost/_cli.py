@@ -342,8 +342,11 @@ def tide(
 
 def sal(
     *,
-    input_path: ExistingPath,
-    fes: ExistingDirectory,
+    input_path: ExistingPath | None = None,
+    fes: ExistingDirectory | None = None,
+    tides: ExistingPath | None = None,
+    tides_var: str = "model",
+    grid_n: int = 360,
     output_dir: ResolvedDirectory = pathlib.Path("."),
     constituents: Annotated[
         list[str], cyclopts.Parameter(consume_multiple=True, negative=())
@@ -352,31 +355,46 @@ def sal(
     start_date: Annotated[str | None, cyclopts.Parameter()] = None,
 ):
     """
-    Generate SCHISM self-attraction & loading (SAL) gr3 files from FES load tide.
+    Generate SCHISM self-attraction & loading (SAL) gr3 files.
 
     Writes one ``loadtide_<C>.gr3`` per constituent, where each node line holds
-    the load-tide amplitude (metres) and phase (degrees), interpolated from the
-    FES ``load_tide`` atlas onto the mesh nodes (via pyTMD). The mesh is read
-    from the SCHISM zarr store (same source as ``tide``).
+    the SAL amplitude (metres) and Greenwich phase lag (degrees). Provide
+    exactly one source:
 
-    The FES Greenwich phase lags are corrected by pre-subtracting the tidal
-    equilibrium argument (V₀+u, a.k.a. "tear" in SCHISM) at the simulation
+    * ``--fes``   FES ``load_tide`` atlas, interpolated onto the mesh read from
+      ``--input-path`` (legacy behaviour).
+    * ``--tides`` a tidal-constituents artifact (``*-tides.zarr`` from
+      ``extract tide``); SAL is computed directly from the ocean-tide constants
+      (``--tides-var``) via a spherical-harmonic convolution, and the mesh is
+      read from the artifact itself.
+
+    The Greenwich phase lags are corrected by pre-subtracting the tidal
+    equilibrium argument (V0+u, a.k.a. "tear" in SCHISM) at the simulation
     start date, so that SCHISM's iloadtide=1 formula produces correct results
     (see https://github.com/schism-dev/schism/issues/225).
 
     Parameters
     ----------
     input_path
-        Path to a SCHISM zarr store (with SCHISM_hgrid_node_x/y and
-        SCHISM_hgrid_face_nodes).
+        SCHISM zarr store (mesh source) — required with ``--fes``.
     fes
         Directory containing FES ``load_tide`` netCDF files
         (e.g. ``m2_fes2022.nc``, ``s2_fes2022.nc`` ...).
+    tides
+        Tidal-constituents artifact (``*-tides.zarr``) produced by
+        ``extract tide``. Enables spherical-harmonic SAL mode; the mesh and
+        constituents are both read from it.
+    tides_var
+        Which complex-constituent variable of the artifact to convolve
+        (e.g. ``model``, ``FES2022_extrapolated``). Default ``model``.
+    grid_n
+        Driscoll-Healy grid resolution (latitude bands) for the spherical-
+        harmonic transform. SAL is smooth, so 180-360 is ample. Default 360.
     output_dir
         Directory for the generated ``loadtide_<C>.gr3`` files.
     constituents
         Constituents to export. Defaults to the 8 major SAL constituents
-        (M2, S2, K2, N2, O1, P1, Q1, K1).
+        (M2, S2, K2, N2, O1, P1, Q1, K1) present in the source.
     overwrite
         Overwrite existing gr3 files.
     start_date
@@ -389,6 +407,9 @@ def sal(
     compute_sal(
         input_path=input_path,
         fes=fes,
+        tides=tides,
+        tides_var=tides_var,
+        grid_n=grid_n,
         output_dir=output_dir,
         constituents=constituents or None,
         overwrite=overwrite,

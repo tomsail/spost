@@ -123,14 +123,26 @@ def compute_tidemap(
 
 def compute_sal(
     *,
-    input_path: pathlib.Path,
-    fes: pathlib.Path,
+    input_path: pathlib.Path | None = None,
+    fes: pathlib.Path | None = None,
+    tides: pathlib.Path | None = None,
+    tides_var: str = "model",
+    grid_n: int = 360,
     output_dir: pathlib.Path = pathlib.Path("."),
     constituents: list[str] | None = None,
     overwrite: bool = False,
     start_date: str | None = None,
 ):
-    """Generate SCHISM self-attraction & loading (SAL) gr3 files from FES load tide.
+    """Generate SCHISM self-attraction & loading (SAL) gr3 files.
+
+    Two sources are supported (provide exactly one):
+
+    * ``fes`` -- interpolate a pre-computed FES ``load_tide`` atlas onto the
+      mesh (legacy behaviour; mesh read from ``input_path``).
+    * ``tides`` -- compute SAL directly from a tidal-constituents artifact
+      produced by :func:`compute_tidemap` via a spherical-harmonic convolution
+      of the ocean-tide constants (``tides_var``, e.g. ``"model"``). The mesh
+      (coordinates + connectivity) is read from the same artifact.
 
     The mesh (node coordinates and triangular connectivity) is read from the
     same SCHISM zarr store used by ``compute_tidemap`` (``SCHISM_hgrid_node_x/y``
@@ -148,6 +160,19 @@ def compute_sal(
 
     Parameters
     ----------
+    input_path : Path, optional
+        SCHISM zarr store used as the mesh source in FES mode.
+    fes : Path, optional
+        Directory of FES ``load_tide`` netCDF files (FES mode).
+    tides : Path, optional
+        Tidal-constituents artifact (``*-tides.zarr``) from
+        :func:`compute_tidemap`. Enables spherical-harmonic SAL mode.
+    tides_var : str, default "model"
+        Which complex-constituent variable of ``tides`` to convolve
+        (e.g. ``"model"``, ``"FES2022_extrapolated"``).
+    grid_n : int, default 360
+        Driscoll-Healy grid resolution (latitude bands) used for the
+        spherical-harmonic transform. SAL is smooth, so 180-360 is ample.
     start_date : str, optional
         Simulation start date as ISO-8601 string (e.g. "2020-01-01").
         Used to compute the tidal equilibrium argument (tear) that gets
@@ -162,14 +187,72 @@ def compute_sal(
 
     from ._utils import build_faces
     from ._utils import interpolate_load_tide
+    from ._utils import sal_from_constituents
+    from ._utils import tidal_arguments
     from ._utils import SAL
 
-    constituents = list(constituents) if constituents else list(SAL)
+    if (tides is None) == (fes is None):
+        raise ValueError(
+            "Provide exactly one SAL source: `fes` (FES load-tide atlas) or "
+            "`tides` (tidal-constituents artifact)."
+        )
 
-    input_path = pathlib.Path(input_path)
-    fes = pathlib.Path(fes)
     output_dir = pathlib.Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # ---- resolve mesh + complex SAL constants z: (nn, nc) ----
+    if tides is not None:
+        # Spherical-harmonic mode: mesh and constituents both live in the artifact.
+        tides = pathlib.Path(tides)
+        data = xr.open_zarr(tides)
+        if tides_var not in data:
+            raise ValueError(
+                f"{tides} has no variable {tides_var!r}. Available: {list(data.data_vars)}"
+            )
+        if "SCHISM_hgrid_face_nodes" not in data:
+            raise ValueError(
+                f"{tides} has no 'SCHISM_hgrid_face_nodes'; cannot write mesh "
+                "connectivity for the gr3 files."
+            )
+        available = [str(c) for c in data["constituent"].values]
+        constituents = list(constituents) if constituents else [c for c in SAL if c in available]
+        missing = [c for c in constituents if c not in available]
+        if missing:
+            raise ValueError(
+                f"Constituents {missing} not in {tides}; available: {available}"
+            )
+        x = data.SCHISM_hgrid_node_x.values
+        y = data.SCHISM_hgrid_node_y.values
+        elements = build_faces(data)  # (ne, 3), 0-based
+        zc = np.asarray(data[tides_var].sel(constituent=constituents).values)  # (nn, nc)
+        # Land / constituents absent from the source -> 0 so they contribute
+        # nothing to the spherical-harmonic expansion.
+        zc = np.nan_to_num(zc)
+        print(
+            f"Computing SH-SAL from {tides_var!r} for {constituents} "
+            f"(DH grid n={grid_n}) ..."
+        )
+        z = sal_from_constituents(zc, x, y, n=grid_n)  # (nn, nc) complex SAL
+    else:
+        # FES mode (legacy): interpolate a pre-computed FES load-tide atlas.
+        if input_path is None:
+            raise ValueError("`input_path` (mesh source) is required in FES mode.")
+        input_path = pathlib.Path(input_path)
+        fes = pathlib.Path(fes)
+        constituents = list(constituents) if constituents else list(SAL)
+        data = xr.open_zarr(input_path)
+        if "SCHISM_hgrid_face_nodes" not in data:
+            raise ValueError(
+                f"{input_path} has no 'SCHISM_hgrid_face_nodes'; cannot write mesh "
+                "connectivity for the gr3 files."
+            )
+        x = data.SCHISM_hgrid_node_x.values
+        y = data.SCHISM_hgrid_node_y.values
+        elements = build_faces(data)  # (ne, 3), 0-based
+        print(f"Reading FES load tide for {constituents} from {fes} ...")
+        z = interpolate_load_tide(fes, x, y, constituents)  # (nn, nc) complex, metres
+
+    nn, ne = len(x), elements.shape[0]
 
     # Fail early if any output exists and we are not overwriting.
     if not overwrite:
@@ -181,31 +264,8 @@ def compute_sal(
                 "Pass overwrite=True (or --overwrite) to replace them."
             )
 
-    data = xr.open_zarr(input_path)
-    if "SCHISM_hgrid_face_nodes" not in data:
-        raise ValueError(
-            f"{input_path} has no 'SCHISM_hgrid_face_nodes'; cannot write mesh "
-            "connectivity for the gr3 files."
-        )
-    x = data.SCHISM_hgrid_node_x.values
-    y = data.SCHISM_hgrid_node_y.values
-    elements = build_faces(data)  # (ne, 3), 0-based
-    nn, ne = len(x), elements.shape[0]
-
-    print(f"Reading FES load tide for {constituents} from {fes} ...")
-    z = interpolate_load_tide(fes, x, y, constituents)  # (nn, nc) complex, metres
-
-    amp = np.abs(z)
-    phase = (-np.angle(z, deg=True)) % 360.0        # Greenwich phase lag G
-
-    # Nodes outside the FES domain -> no load contribution.
-    nan_mask = np.isnan(z)
-    print("number of NaNs",nan_mask.sum())
-    amp[nan_mask] = 0.0
-    phase[nan_mask] = 0.0
-    n_filled = int(nan_mask.any(axis=1).sum())
-    if n_filled:
-        print(f"Filled {n_filled}/{nn} nodes outside FES coverage with amplitude 0.")
+    amp = -1.69*np.abs(z)
+    phase = (np.angle(-z, deg=True)) % 360.0        # Greenwich phase lag G
 
     written = []
     for ic, c in enumerate(constituents):

@@ -339,3 +339,193 @@ def tidal_arguments(
     vu = (G[0] + np.degrees(pu[0]))  # V0 + u, degrees
     f = pf[0]
     return vu, f
+
+
+# ---------------------------------------------------------------------------
+# Spherical-harmonic self-attraction & loading (SAL)
+# ---------------------------------------------------------------------------
+# Physical constants (kg/m3).
+RHO_WATER = 1026.0
+RHO_EARTH = 5517.0
+
+# Load Love numbers h'_n, k'_n (PREM, elastic). This short table (n=2,3,4) is
+# the demo set; degrees beyond the table hold the highest tabulated value.
+# For production accuracy, replace/extend with a full table (Wang et al. 2012,
+# or Delft3D's LOAD_LOVE_NUMBERS_H/K in timespace_data_tables.f90).
+LOAD_LOVE: dict[int, tuple[float, float]] = {
+    2: (-1.001, -0.3075),
+    3: (-1.052, -0.195),
+    4: (-1.058, -0.132),
+}
+
+
+def nodes_to_dh_grid(
+    values: np.ndarray,
+    node_lon: np.ndarray,
+    node_lat: np.ndarray,
+    n: int = 360,
+    fill: float = 0.0,
+    seam_pad: float = 5.0,
+) -> np.ndarray:
+    """Interpolate a scattered REAL field onto a Driscoll-Healy grid.
+
+    Spherical-harmonic analysis operates on a regular grid, but SCHISM tidal
+    constants live on the unstructured mesh nodes. This resamples the nodal
+    field onto a DH grid of shape ``(n, 2n)`` using linear (Delaunay)
+    interpolation.
+
+    DH convention (matches :class:`pyshtools.SHGrid`): ``lat_i = 90 - 180*i/n``
+    (i.e. 90 -> just above -90) and ``lon_j = 360*j/(2n)`` (0 -> just below
+    360). Cells with no mesh coverage (land, or outside a regional mesh) are set
+    to ``fill`` (0 for SAL, so land contributes nothing to the expansion).
+
+    Parameters
+    ----------
+    values
+        Real nodal field, shape ``(n_nodes,)``.
+    node_lon, node_lat
+        Node coordinates in degrees, shape ``(n_nodes,)``. ``node_lon`` may be
+        in either ``[-180, 180]`` or ``[0, 360]``.
+    n
+        Number of DH latitude bands (must be even). ``2n`` longitudes.
+    fill
+        Value for grid cells outside the mesh footprint.
+    seam_pad
+        Nodes within this many degrees of the 0/360 longitude seam are
+        duplicated on the far side so linear interpolation does not leave a
+        gap along the meridian. Keeps the duplicated-point count small on
+        large global meshes.
+    """
+    from scipy.interpolate import griddata
+
+    if n % 2:
+        raise ValueError(f"DH grid needs an even number of latitudes, got n={n}")
+
+    lat_dh = 90.0 - 180.0 * np.arange(n) / n          # (n,)
+    lon_dh = 360.0 * np.arange(2 * n) / (2 * n)        # (2n,)
+    lon2d, lat2d = np.meshgrid(lon_dh, lat_dh)         # (n, 2n)
+
+    lon = np.mod(np.asarray(node_lon, dtype=float), 360.0)
+    lat = np.asarray(node_lat, dtype=float)
+    vals = np.asarray(values, dtype=float)
+
+    # Duplicate only the near-seam nodes on the opposite side of 0/360.
+    left = lon <= seam_pad
+    right = lon >= 360.0 - seam_pad
+    pts_lon = np.concatenate([lon, lon[left] + 360.0, lon[right] - 360.0])
+    pts_lat = np.concatenate([lat, lat[left], lat[right]])
+    pts_val = np.concatenate([vals, vals[left], vals[right]])
+
+    grid = griddata(
+        (pts_lon, pts_lat), pts_val, (lon2d, lat2d),
+        method="linear", fill_value=fill,
+    )
+    return np.nan_to_num(grid, nan=fill)
+
+
+def sal_convolution_real(
+    eta_grid: np.ndarray,
+    love: dict[int, tuple[float, float]] = LOAD_LOVE,
+    lat_out: np.ndarray | None = None,
+    lon_out: np.ndarray | None = None,
+    mode: str = "sal",
+    nmin: int = 2,
+    rho_w: float = RHO_WATER,
+    rho_e: float = RHO_EARTH,
+) -> np.ndarray:
+    """Spherical-harmonic convolution of a REAL field (metres).
+
+    Expands ``eta_grid`` (a 2-D Driscoll-Healy grid) into spherical harmonics,
+    scales each degree ``n`` by the load-tide response, then synthesises the
+    result. With ``mode='sal'`` the per-degree weight is
+    ``(3*rho_w/rho_e) * (1 + k'_n - h'_n) / (2n+1)`` (the self-attraction &
+    loading forcing, in phase with the ocean tide); with ``mode='load'`` it is
+    the crustal-loading displacement weight ``h'_n``.
+
+    Parameters
+    ----------
+    eta_grid
+        Real DH grid, shape ``(nlat, nlon)`` (e.g. from :func:`nodes_to_dh_grid`).
+    love
+        Mapping ``degree -> (h'_n, k'_n)``. Degrees above the highest key reuse
+        that highest entry.
+    lat_out, lon_out
+        If given (degrees, any broadcastable shape), synthesise the result at
+        those points (e.g. the SCHISM nodes) instead of returning a grid.
+    mode
+        ``'sal'`` or ``'load'``.
+    nmin
+        Minimum degree kept (degrees ``< nmin`` are zeroed; the degree-0/1
+        terms are not physically meaningful for SAL).
+    """
+    import pyshtools as pysh
+
+    coeffs = pysh.SHGrid.from_array(np.asarray(eta_grid, dtype=float), grid="DH").expand()
+    n_last = max(love)
+    c = coeffs.coeffs.copy()
+    for n in range(coeffs.lmax + 1):
+        if n >= nmin:
+            hp, kp = love.get(n, love[n_last])   # hold highest degree beyond table
+            fac = (1.0 + kp - hp) if mode == "sal" else hp
+            c[:, n, :] *= (3.0 * rho_w / rho_e) * fac / (2.0 * n + 1.0)
+        else:
+            c[:, n, :] = 0.0
+    out = pysh.SHCoeffs.from_array(
+        c, normalization=coeffs.normalization, csphase=coeffs.csphase
+    )
+    if lat_out is not None:
+        return out.expand(
+            lat=np.asarray(lat_out, dtype=float),
+            lon=np.asarray(lon_out, dtype=float),
+        )
+    return out.expand(grid="DH2").data
+
+
+def sal_from_constituents(
+    z: np.ndarray,
+    node_lon: np.ndarray,
+    node_lat: np.ndarray,
+    love: dict[int, tuple[float, float]] = LOAD_LOVE,
+    n: int = 360,
+    mode: str = "sal",
+) -> np.ndarray:
+    """Complex tidal constants on the mesh -> complex SAL constants on the mesh.
+
+    Pipeline: scattered nodes -> DH grid (real & imag separately) -> SH
+    convolution -> synthesis back at the same nodes. The operation is linear,
+    so the same amplitude/phase convention as the input (``z = A * exp(-i*G)``,
+    Greenwich phase lag ``G``) carries through to the output.
+
+    Parameters
+    ----------
+    z
+        Complex tidal constants, shape ``(n_nodes,)`` (single constituent) or
+        ``(n_nodes, n_constituents)``.
+    node_lon, node_lat
+        Node coordinates in degrees, shape ``(n_nodes,)``.
+    love
+        Load Love-number table (see :data:`LOAD_LOVE`).
+    n
+        DH grid resolution (latitude bands).
+    mode
+        ``'sal'`` (default) or ``'load'``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Complex SAL constants with the same shape as ``z``.
+    """
+    z = np.asarray(z)
+    if z.ndim == 1:
+        cols = z[:, None]
+    else:
+        cols = z
+    out = np.empty_like(cols, dtype=complex)
+    for k in range(cols.shape[1]):
+        col = cols[:, k]
+        re = nodes_to_dh_grid(col.real, node_lon, node_lat, n=n)
+        im = nodes_to_dh_grid(col.imag, node_lon, node_lat, n=n)
+        s_re = sal_convolution_real(re, love, lat_out=node_lat, lon_out=node_lon, mode=mode)
+        s_im = sal_convolution_real(im, love, lat_out=node_lat, lon_out=node_lon, mode=mode)
+        out[:, k] = s_re + 1j * s_im
+    return out.reshape(z.shape)
