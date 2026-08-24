@@ -58,9 +58,9 @@ Clip a SCHISM zarr store to a bounding box and write a new store.
 $ spost extract stations
 Usage: spost [OPTIONS] [ARGS...]
 
-Extract station time series to parquet files.                                                       
+Extract station time series to parquet files.
 
-Reads station.in and staout_* files from one or more SCHISM outputs/ directories (for hotstart      
+Reads station.in and staout_* files from one or more SCHISM outputs/ directories (for hotstart
 segments) and writes per-station parquet files, organized by variable.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
@@ -79,14 +79,14 @@ segments) and writes per-station parquet files, organized by variable.
 $ spost extract to-zarr
 Usage: spost [OPTIONS]
 
-Convert SCHISM output to Zarr format.                                                               
+Convert SCHISM output to Zarr format.
 
-Supported variables:                                                                                
+Supported variables:
 
- • elevation                                                                                        
- • depth_average_velocity_x                                                                         
- • depth_average_velocity_y                                                                         
- • salinity                                                                                         
+ • elevation
+ • depth_average_velocity_x
+ • depth_average_velocity_y
+ • salinity
  • temperature.
 
 ╭─ Parameters ─────────────────────────────────────────────────────────────────────────────────────╮
@@ -99,6 +99,10 @@ Supported variables:
 │ --overwrite --no-overwrite     Overwrite existing store. [default: False]                        │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
+
+When both `depth_average_velocity_x` and `depth_average_velocity_y` are written,
+`velocity_magnitude` (m s-1) and `velocity_angle` (degrees, `atan2(vy, vx)` math
+convention) are derived and added to the store automatically.
 
 ### Plot
 
@@ -134,7 +138,7 @@ Render a variable from a zarr store to PNG frames.
 $ spost plot to-mp4
 Usage: spost [OPTIONS]
 
-Render a variable from a zarr store to an MP4 video.                                                
+Render a variable from a zarr store to an MP4 video.
 
 Generates PNGs first, then stitches them with ffmpeg.
 

@@ -26,6 +26,12 @@ STATIC_VARIABLES = [
     "time",
 ]
 
+VELOCITY_X = "depth_average_velocity_x"
+VELOCITY_Y = "depth_average_velocity_y"
+VELOCITY_MAGNITUDE = "velocity_magnitude"
+VELOCITY_ANGLE = "velocity_angle"
+# Source attributes worth carrying over so downstream plotting keeps working.
+_INHERITED_VELOCITY_ATTRS = ("grid_mapping", "mesh", "location")
 
 class VariableSpec(ty.TypedDict):
     nc_variable: str
@@ -175,6 +181,54 @@ def populate_array(
     )
 
 
+def _write_velocity_shard(store_path: pathlib.Path, node_start: int, node_end: int):
+    group = zarr.open_group(store_path)
+    vx = group[VELOCITY_X][:, node_start:node_end]
+    vy = group[VELOCITY_Y][:, node_start:node_end]
+    group[VELOCITY_MAGNITUDE][:, node_start:node_end] = np.hypot(vx, vy)
+    group[VELOCITY_ANGLE][:, node_start:node_end] = np.degrees(np.arctan2(vy, vx))
+
+
+def derive_velocity_polar(
+    store_path: pathlib.Path,
+    clevel: int = 3,
+    workers: int = 12,
+):
+    """Add ``velocity_magnitude`` (m s-1) and ``velocity_angle`` (degrees,
+    ``atan2(vy, vx)`` math convention) derived from the depth-averaged velocity
+    components already present in ``store_path``, mirroring their layout."""
+    group = zarr.open_group(store=store_path)
+    src = group[VELOCITY_X]
+    inherited = {k: src.attrs[k] for k in _INHERITED_VELOCITY_ATTRS if k in src.attrs}
+    for name, long_name, units in (
+        (VELOCITY_MAGNITUDE, "depth-averaged velocity magnitude", "m s-1"),
+        (VELOCITY_ANGLE, "depth-averaged velocity direction (atan2(vy, vx))", "degree"),
+    ):
+        group.create_array(
+            name=name,
+            shape=src.shape,
+            dtype="float32",
+            dimension_names=src.metadata.dimension_names,
+            attributes={**inherited, "long_name": long_name, "units": units},
+            chunks=src.chunks,
+            shards=src.shards,
+            overwrite=True,
+            fill_value=None,
+            compressors=(get_compressor(clevel),),
+        )
+    zarr.consolidate_metadata(store_path)
+    n_nodes = src.shape[1]
+    node_shard = (src.shards or src.chunks)[1]
+    node_shard_ranges = [(i, min(i + node_shard, n_nodes)) for i in range(0, n_nodes, node_shard)]
+    _ = mf.multithread(
+        func=functools.partial(_write_velocity_shard, store_path),
+        func_kwargs=[dict(node_start=ss, node_end=ee) for ss, ee in node_shard_ranges],
+        max_workers=workers,
+        include_kwargs=False,
+        check=True,
+    )
+
+
 def to_zarr(
     base_path: pathlib.Path,
     store_path: pathlib.Path,
@@ -211,3 +265,6 @@ def to_zarr(
             exclude_last=exclude_last,
             **spec,
         )
+    # Auto-derive polar velocity when both components were written.
+    if VELOCITY_X in variables and VELOCITY_Y in variables:
+        derive_velocity_polar(store_path, clevel=clevel, workers=workers)

@@ -11,8 +11,10 @@ from ._cli import tide
 from ._cli import to_mp4
 from ._cli import to_pngs
 from ._cli import to_zarr
-from .validate._cli import compare
-from .validate._cli import report
+from .validate._cli import compare_cmd
+from .validate._cli import fetch_obs_cmd
+from .validate._cli import report_cmd
+from .validate._cli import tidal_cmd
 from .validate._cli import validate
 
 # Store all subcommand apps in a list for easy config application
@@ -58,9 +60,11 @@ _ = extract_app.command(tide, group=extract2D_group)
 _ = extract_app.command(sal, group=extract2D_group)
 _ = plot_app.command(to_pngs, group=render_group)
 _ = plot_app.command(to_mp4, group=render_group)
-_ = skill_app.command(compare, group=station_group)
-_ = skill_app.command(report, group=report_group)
-_ = skill_app.command(validate, group=auto_group)
+_ = skill_app.command(fetch_obs_cmd, name="fetch-obs", group=station_group)
+_ = skill_app.command(compare_cmd, name="compare", group=station_group)
+_ = skill_app.command(tidal_cmd, name="tidal", group=map_group)
+_ = skill_app.command(report_cmd, name="report", group=report_group)
+_ = skill_app.command(validate, name="validate", group=auto_group)
 
 @app.meta.default
 def _meta(

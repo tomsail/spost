@@ -1,9 +1,10 @@
 """Cyclopts subcommands for the validation pipeline.
 
-Apps are exposed as standalone ``cyclopts.App`` instances so the parent CLI can
-register them at the top level (matching the spec: ``spost validate``,
-``spost fetch-obs``, ``spost compare``, ``spost report``,
-``spost tidal-analysis``).
+Command callables are named ``<stage>_cmd`` and registered under the ``skill``
+app with explicit hyphenated names (``fetch-obs``, ``compare``, ``tidal``,
+``report``). Each body lazily imports its implementation from
+:mod:`spost.validate` so the heavy ``validate`` extra is only required when a
+command is actually executed.
 """
 from __future__ import annotations
 
@@ -15,7 +16,6 @@ from typing import Annotated
 
 import platformdirs
 from cyclopts import Parameter
-from cyclopts.types import ResolvedDirectory
 
 _HOSTNAME = platform.node()
 
@@ -33,74 +33,156 @@ _DEFAULT_CACHE_DIR = _default_cache_dir
 _DEFAULT_OBS_DIR = _default_obs_dir
 
 
-def compare(
+def fetch_obs_cmd(
     *,
-    sim_dir: pathlib.Path,
-    obs_dir: pathlib.Path,
+    run: str | None = None,
+    start: datetime.datetime | None = None,
+    end: datetime.datetime | None = None,
+    meta_parquet: pathlib.Path | None = None,
+    transformations_dir: pathlib.Path | None = None,
+    clean_data_folder: pathlib.Path | None = None,
     output_path: pathlib.Path | None = None,
-    variables: Annotated[list[str], Parameter(consume_multiple=True, negative=())] = ["elev"],
-    overwrite: Annotated[bool, Parameter(negative=())] = False
+    no_cache: Annotated[bool, Parameter(negative=())] = False,
+    force: Annotated[bool, Parameter(negative=())] = False,
 ):
-    """
-    Align model and obs and compute seastats skill metrics.
+    """Download IOC observations and apply ``ioc_cleanup`` transformations.
 
     Parameters
     ----------
-    sim_dir
-        Path to directory containing model output parquets files.
-    obs_dir
-        Path to directory containing (cleaned) observation parquet files.
+    run
+        Run identifier used for default path resolution.
+    start, end
+        Observation window (ISO-8601).
+    meta_parquet
+        Station metadata parquet. Defaults to ``ioc_cleanup.get_meta()``.
+    transformations_dir
+        Directory of cleanup transformations. Defaults to
+        ``ioc_cleanup.get_transformations_dir()``.
+    clean_data_folder
+        Output directory for cleaned observation parquet files.
     output_path
-        Optional path to directory for storing comparison outputs (aligned time-series, metrics parquet).
-        Defaults to `comparisons/{sim_dir.name}_{obs_dir.name}`.
-    variables
-        List of variable names to compare (e.g. ["elev", "ssh"]).
-    overwrite
-        If True, ignore any existing outputs and re-run comparison.
+        Base validation output directory.
+    no_cache
+        Bypass the on-disk IOC raw-data cache.
+    force
+        Ignore prior state and reprocess everything.
     """
+    from spost.validate import fetch_obs
 
-    from spost.validate._1D_analysis import compare as _compare
+    fetch_obs(
+        run=run,
+        start=start,
+        end=end,
+        meta_parquet=meta_parquet,
+        transformations_dir=transformations_dir,
+        clean_data_folder=clean_data_folder,
+        output_path=output_path,
+        no_cache=no_cache,
+        force=force,
+    )
 
-    _compare(
-        sim_dir=sim_dir,
+
+def compare_cmd(
+    *,
+    run: str | None = None,
+    start: datetime.datetime | None = None,
+    end: datetime.datetime | None = None,
+    zarr_path: pathlib.Path | None = None,
+    station_data_path: pathlib.Path | None = None,
+    obs_dir: pathlib.Path | None = None,
+    output_path: pathlib.Path | None = None,
+    variables: Annotated[list[str], Parameter(consume_multiple=True, negative=())] = ["elev"],
+    spinup_days: int = 0,
+    overwrite: Annotated[bool, Parameter(negative=())] = False,
+):
+    """Align model and obs and compute ``seastats`` skill metrics.
+
+    Parameters
+    ----------
+    run
+        Run identifier used for default path resolution.
+    start, end
+        Comparison window (ISO-8601).
+    zarr_path
+        Model zarr store. Defaults to ``./{run}.zarr``.
+    station_data_path
+        Directory of extracted station parquet files.
+    obs_dir
+        Directory of cleaned observation parquet files.
+    output_path
+        Directory for comparison outputs (aligned time-series, metrics parquet).
+    variables
+        Variable names to compare (e.g. ``elev``).
+    spinup_days
+        Number of leading days to drop before scoring.
+    overwrite
+        Re-run comparison even if outputs exist.
+    """
+    from spost.validate import compare
+
+    compare(
+        run=run,
+        start=start,
+        end=end,
+        zarr_path=zarr_path,
+        station_data_path=station_data_path,
         obs_dir=obs_dir,
         output_path=output_path,
         variables=tuple(variables),
+        spinup_days=spinup_days,
         overwrite=overwrite,
     )
 
 
-def tidal(
+def tidal_cmd(
     *,
     run: str | None = None,
     start: datetime.datetime | None = None,
     end: datetime.datetime | None = None,
     zarr_path: pathlib.Path | None = None,
     output: pathlib.Path | None = None,
-    constituents: Annotated[list[str], Parameter(consume_multiple=True)] | None = None,
+    constituents: Annotated[list[str], Parameter(consume_multiple=True, negative=())] | None = None,
     chunk_size: int = 100,
     n_jobs: int = -1,
     resample_minutes: int = 60,
 ):
-    """Decompose elevation across the full mesh into tidal constituents."""
+    """Decompose elevation across the full mesh into tidal constituents.
 
-    from spost.validate import tidal_analysis as _tidal
-    from spost.validate.tidal_analysis import FULL_CONSTITUENTS
+    Parameters
+    ----------
+    run
+        Run identifier used for default path resolution.
+    start, end
+        Analysis window (ISO-8601).
+    zarr_path
+        Model zarr store. Defaults to ``./{run}.zarr``.
+    output
+        Output netCDF/zarr path for tidal coefficients.
+    constituents
+        Constituents to solve for. Defaults to the full constituent set.
+    chunk_size
+        Number of nodes per joblib chunk.
+    n_jobs
+        Parallel worker count (``-1`` uses all cores).
+    resample_minutes
+        Resampling interval before harmonic analysis.
+    """
+    from spost.validate import tidal_analysis
 
-    _tidal(
+    tidal_analysis(
+        run=run,
         start=start,
         end=end,
-        run=run,
         zarr_path=zarr_path,
         output=output,
-        constituents=tuple(constituents) if constituents else tuple(FULL_CONSTITUENTS),
+        constituents=tuple(constituents) if constituents else None,
         chunk_size=chunk_size,
         n_jobs=n_jobs,
         resample_minutes=resample_minutes,
     )
 
 
-def report(
+def report_cmd(
     *,
     run: str | None = None,
     output_path: pathlib.Path | None = None,
@@ -118,10 +200,35 @@ def report(
     include_map: bool = True,
     include_summary: bool = True,
 ):
-    """Render the validation report (HTML, PDF, or both)."""
-    from spost.validate import report as _report
+    """Render the validation report (HTML, PDF, or both).
 
-    _report(
+    Parameters
+    ----------
+    run
+        Run identifier used for default path resolution.
+    output_path
+        Base validation output directory.
+    metrics_parquet
+        Metrics parquet produced by ``compare``.
+    station_data_path
+        Directory of extracted station parquet files.
+    obs_dir
+        Directory of cleaned observation parquet files.
+    tides_nc
+        Optional tidal-maps netCDF to embed in the report.
+    format
+        Report format: ``html``, ``pdf``, or ``both``.
+    reference_metrics
+        Optional reference metrics parquet for comparison.
+    name
+        Optional report/run display name.
+    include_timeseries, include_scatter, include_taylor, include_tidal_maps,
+    include_map, include_summary
+        Toggle individual report sections (disable with ``--no-include-*``).
+    """
+    from spost.validate import report
+
+    report(
         run=run,
         output_path=output_path,
         metrics_parquet=metrics_parquet,
@@ -145,41 +252,76 @@ def validate(
     run: str | None = None,
     start: datetime.datetime | None = None,
     end: datetime.datetime | None = None,
+    zarr_path: pathlib.Path | None = None,
     clean_data_folder: pathlib.Path | None = None,
     meta_parquet: pathlib.Path | None = None,
     transformations_dir: pathlib.Path | None = None,
+    station_data_path: pathlib.Path | None = None,
     output_path: pathlib.Path | None = None,
     variables: Annotated[list[str], Parameter(consume_multiple=True, negative=())] = ["elev"],
     spinup_days: int = 0,
     report_format: str = "html",
     reference_metrics: pathlib.Path | None = None,
     name: str | None = None,
-        overwrite: Annotated[bool, Parameter(negative=())] = False,
+    force: Annotated[bool, Parameter(negative=())] = False,
 ):
-    """Run the full validation station pipeline (fetch-obs -> compare -> report).
+    """Run the full validation pipeline (fetch-obs -> compare -> report).
 
-    Equivalent to running ``fetch-obs``, ``compare`` and ``report`` in
-    sequence. ``tidal-analysis`` is intentionally excluded - it's a heavier
-    standalone computation.
+    ``tidal`` is intentionally excluded - it's a heavier standalone computation.
+
+    Parameters
+    ----------
+    run
+        Run identifier used for default path resolution.
+    start, end
+        Validation window (ISO-8601).
+    zarr_path
+        Model zarr store. Defaults to ``./{run}.zarr``.
+    clean_data_folder
+        Output directory for cleaned observation parquet files.
+    meta_parquet
+        Station metadata parquet. Defaults to ``ioc_cleanup.get_meta()``.
+    transformations_dir
+        Directory of cleanup transformations.
+    station_data_path
+        Directory of extracted station parquet files.
+    output_path
+        Base validation output directory.
+    variables
+        Variable names to validate (e.g. ``elev``).
+    spinup_days
+        Number of leading days to drop before scoring.
+    report_format
+        Report format: ``html``, ``pdf``, or ``both``.
+    reference_metrics
+        Optional reference metrics parquet for comparison.
+    name
+        Optional report/run display name.
+    force
+        Ignore prior state and reprocess everything.
     """
-
-    _fetch_obs(
-        start=start,
-        end=end,
-        clean_data_folder=clean_data_folder,
-        transformations_dir=transformations_dir,
-        overwrite=overwrite,
-    )
-    _compare(
-        start=start,
-        end=end,
+    fetch_obs_cmd(
         run=run,
+        start=start,
+        end=end,
+        meta_parquet=meta_parquet,
+        transformations_dir=transformations_dir,
+        clean_data_folder=clean_data_folder,
+        output_path=output_path,
+        force=force,
+    )
+    compare_cmd(
+        run=run,
+        start=start,
+        end=end,
+        zarr_path=zarr_path,
         station_data_path=station_data_path,
         output_path=output_path,
+        variables=variables,
         spinup_days=spinup_days,
-        variables=tuple(variables),
+        overwrite=force,
     )
-    _report(
+    report_cmd(
         run=run,
         output_path=output_path,
         station_data_path=station_data_path,
