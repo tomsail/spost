@@ -131,7 +131,7 @@ def keep_common_consituents(df: pd.DataFrame, cnst: list) -> pd.DataFrame:
 
 def analyze_node(ts_np: np.ndarray, time_index: pd.DatetimeIndex) -> np.ndarray:
     ts = pd.Series(ts_np, index=time_index, name="elev")
-    df = pytides_to_df(pytides_get_coefs(ts, 60))
+    df = pytides_to_df(pytides_get_coefs(ts))
     df = keep_common_consituents(df, FULL)
     return df["z"].to_numpy()
 
